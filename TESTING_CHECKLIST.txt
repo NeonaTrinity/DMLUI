@@ -1,3 +1,16 @@
+DML Cooldown Bar 2.0.76 focused checks
+========================================
+
+1. Leave Bagnon compatibility enabled, open populated bags, and watch addon
+   memory for several minutes. It may fluctuate with normal Lua garbage
+   collection, but should no longer climb rapidly from roughly 3 MB to 10 MB.
+2. Shift-hover newly looted and equipped items repeatedly with Bagnon enabled.
+3. Drag a global macro and a character macro onto normal DML buttons. Verify
+   clicking and DML keybinds execute them.
+4. Move and swap macro buttons, save/load a profile, and test a Bar 1 stance page.
+5. Edit a macro in Blizzard's macro window and verify UPDATE_MACROS refreshes its
+   DML name, icon, body, and secure click outside combat.
+
 DML COOLDOWN BAR 2.0.75 ITEM-CACHE / BAGNON SAFETY
 
 [ ] Enable Bagnon compatibility, /reload, and open/close bags repeatedly.

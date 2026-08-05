@@ -11,7 +11,9 @@ local ADDON_NAME = "DMLCooldownBar"
 local DMLCD = _G.DMLCooldownBar or {}
 local hookStates = setmetatable({}, { __mode = "k" })
 local iconByItemId = {}
-local iconByLink = {}
+local linkIconCache = {}
+local linkIconCacheSize = 0
+local MAX_LINK_ICON_CACHE = 512
 
 local function NormalizeIconPath(icon)
     if not icon or icon == "" then
@@ -32,13 +34,10 @@ local function ClearTable(tbl)
     end
 end
 
-local function CaptureReturns(...)
-    return select("#", ...), { ... }
-end
-
 local function RebuildIconCache()
     ClearTable(iconByItemId)
-    ClearTable(iconByLink)
+    ClearTable(linkIconCache)
+    linkIconCacheSize = 0
 
     if type(DMLCooldownBarCustomItems) ~= "table" then
         return
@@ -72,18 +71,33 @@ local function GetCustomIconFromLink(link)
         return nil
     end
 
-    local cached = iconByLink[link]
+    local cached = linkIconCache[link]
     if cached ~= nil then
         return cached or nil
     end
 
+    -- Keep the useful negative cache, but cap it so Bagnon_Forever, random
+    -- properties, enchants, and newly seen items cannot grow DML forever.
+    if linkIconCacheSize >= MAX_LINK_ICON_CACHE then
+        ClearTable(linkIconCache)
+        linkIconCacheSize = 0
+    end
+
     local itemId = tonumber(string.match(link, "item:(%-?%d+)"))
     local icon = itemId and iconByItemId[itemId] or nil
-
-    -- false is a deliberate negative-cache value. Ordinary items therefore
-    -- require no repeated link parsing on later Bagnon refreshes/bag opens.
-    iconByLink[link] = icon or false
+    linkIconCache[link] = icon or false
+    linkIconCacheSize = linkIconCacheSize + 1
     return icon
+end
+
+-- Preserve the upstream function's exact vararg return count without creating
+-- a temporary table for every visible Bagnon slot refresh.
+local function ReplaceFirstReturnWithCustomIcon(linkIndex, ...)
+    local customTexture = GetCustomIconFromLink(select(linkIndex, ...))
+    if customTexture then
+        return customTexture, select(2, ...)
+    end
+    return ...
 end
 
 local function InstallClassHook(slotClass, linkIndex)
@@ -110,12 +124,7 @@ local function InstallClassHook(slotClass, linkIndex)
 
     local upstream = current
     local wrapper = function(self)
-        local count, values = CaptureReturns(upstream(self))
-        local customTexture = GetCustomIconFromLink(values[linkIndex])
-        if customTexture then
-            values[1] = customTexture
-        end
-        return unpack(values, 1, count)
+        return ReplaceFirstReturnWithCustomIcon(linkIndex, upstream(self))
     end
 
     hookStates[slotClass] = {

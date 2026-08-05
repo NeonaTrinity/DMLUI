@@ -33,7 +33,7 @@ DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
 DMLCD.ITEM_INFO_RETRY_DELAY = 5
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.75"
+local ADDON_VERSION = "2.0.76"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -82,7 +82,7 @@ local BAR_DRAG_HANDLE_HEIGHT = 18
 local BAR_DRAG_HANDLE_GAP = 2
 
 local defaults = {
-    version = 20,
+    version = 21,
     locked = false,
     shown = true,
     barCount = 1,
@@ -199,6 +199,20 @@ end
 
 local function RoundUp(value)
     return math.ceil(value - 0.000001)
+end
+
+-- Reusable scratch tables prevent the 0.1-second visual update loop from
+-- allocating fresh garbage continuously while the addon is otherwise idle.
+DMLCD.updateExpiredCooldowns = DMLCD.updateExpiredCooldowns or {}
+DMLCD.updateResourceCache = DMLCD.updateResourceCache or {}
+DMLCD.updateRangeCache = DMLCD.updateRangeCache or {}
+
+function DMLCD.ClearScratchTable(tbl)
+    local key
+    for key in pairs(tbl) do
+        tbl[key] = nil
+    end
+    return tbl
 end
 
 -- Each DML bar now owns its own geometry. These helpers live on the addon
@@ -465,6 +479,7 @@ local function CopyDefaults(reset)
         else
             local kind = string.lower(tostring(
                 assignment.kind or
+                (assignment.macroBody and "macro") or
                 (assignment.companionType and "companion") or
                 (assignment.itemId and "item") or
                 "spell"
@@ -475,6 +490,10 @@ local function CopyDefaults(reset)
                 assignment.spellId = nil
                 assignment.companionType = nil
                 assignment.companionIndex = nil
+                assignment.macroIndex = nil
+                assignment.macroName = nil
+                assignment.macroIcon = nil
+                assignment.macroBody = nil
                 if not assignment.itemId then
                     DB.assignments[assignmentIndex] = nil
                 end
@@ -484,9 +503,26 @@ local function CopyDefaults(reset)
                 assignment.companionIndex = tonumber(assignment.companionIndex or assignment.index)
                 assignment.spellId = tonumber(assignment.spellId or assignment.id)
                 assignment.itemId = nil
+                assignment.macroIndex = nil
+                assignment.macroName = nil
+                assignment.macroIcon = nil
+                assignment.macroBody = nil
                 if (assignment.companionType ~= "MOUNT" and assignment.companionType ~= "CRITTER") or
                     (not assignment.companionIndex and not assignment.spellId)
                 then
+                    DB.assignments[assignmentIndex] = nil
+                end
+            elseif kind == "macro" then
+                assignment.kind = "macro"
+                assignment.macroIndex = tonumber(assignment.macroIndex or assignment.index)
+                assignment.macroName = tostring(assignment.macroName or assignment.name or "Macro")
+                assignment.macroIcon = assignment.macroIcon or assignment.icon
+                assignment.macroBody = tostring(assignment.macroBody or assignment.macroText or "")
+                assignment.itemId = nil
+                assignment.spellId = nil
+                assignment.companionType = nil
+                assignment.companionIndex = nil
+                if assignment.macroBody == "" and not assignment.macroIndex then
                     DB.assignments[assignmentIndex] = nil
                 end
             else
@@ -495,6 +531,10 @@ local function CopyDefaults(reset)
                 assignment.itemId = nil
                 assignment.companionType = nil
                 assignment.companionIndex = nil
+                assignment.macroIndex = nil
+                assignment.macroName = nil
+                assignment.macroIcon = nil
+                assignment.macroBody = nil
                 if not assignment.spellId then
                     DB.assignments[assignmentIndex] = nil
                 end
@@ -547,7 +587,7 @@ local function CopyDefaults(reset)
         }
     end
 
-    DB.version = 20
+    DB.version = 21
     DB.barCount = Clamp(DB.barCount, 1, MAX_BARS) or defaults.barCount
     DB.buttonCount = Clamp(DB.buttonCount, 1, MAX_BUTTONS) or defaults.buttonCount
     DB.columns = Clamp(DB.columns, 1, MAX_BUTTONS) or defaults.columns
@@ -1679,6 +1719,63 @@ function DMLCD.ResolveItem(itemId, suppliedName)
     }
 end
 
+-- Macros are copied into the assignment itself so profiles remain usable on a
+-- second computer even when its global/character macro indices differ. When a
+-- matching live macro exists, its current name, icon, and body are preferred.
+function DMLCD.ResolveMacro(macroIndex, suppliedName, suppliedIcon, suppliedBody)
+    macroIndex = tonumber(macroIndex)
+    suppliedName = suppliedName and tostring(suppliedName) or nil
+    suppliedBody = suppliedBody and tostring(suppliedBody) or ""
+
+    local resolvedIndex = macroIndex
+    local liveName, liveIcon, liveBody
+
+    if resolvedIndex and GetMacroInfo then
+        local ok
+        ok, liveName, liveIcon, liveBody = pcall(GetMacroInfo, resolvedIndex)
+        if not ok or not liveName then
+            liveName, liveIcon, liveBody = nil, nil, nil
+        end
+    end
+
+    if liveName and suppliedName and liveName ~= suppliedName then
+        liveName, liveIcon, liveBody = nil, nil, nil
+        resolvedIndex = nil
+    end
+
+    if not liveName and suppliedName and GetMacroIndexByName and GetMacroInfo then
+        local ok, foundIndex = pcall(GetMacroIndexByName, suppliedName)
+        foundIndex = ok and tonumber(foundIndex) or nil
+        if foundIndex and foundIndex > 0 then
+            local infoOk
+            infoOk, liveName, liveIcon, liveBody = pcall(GetMacroInfo, foundIndex)
+            if infoOk and liveName then
+                resolvedIndex = foundIndex
+            else
+                liveName, liveIcon, liveBody = nil, nil, nil
+            end
+        end
+    end
+
+    local macroName = liveName or suppliedName or "Macro"
+    local macroBody = liveBody or suppliedBody
+    local macroIcon = liveIcon or suppliedIcon or QUESTION_ICON
+
+    if not macroBody or macroBody == "" then
+        return nil
+    end
+
+    return {
+        kind = "macro",
+        macroIndex = resolvedIndex,
+        name = macroName,
+        macroName = macroName,
+        macroText = macroBody,
+        icon = macroIcon,
+        clientKnown = liveName and true or false
+    }
+end
+
 -- Mounts and non-combat companion pets use Wrath's companion collection API.
 -- Store both the collection position and summon-spell ID: companion positions can
 -- be reordered by the client, while the spell ID remains the most stable identity.
@@ -1848,6 +1945,9 @@ local function GetAssignmentKind(assignment)
     if not assignment then
         return nil
     end
+    if assignment.kind == "macro" or assignment.macroBody then
+        return "macro"
+    end
     if assignment.kind == "companion" or assignment.companionType then
         return "companion"
     end
@@ -1864,6 +1964,9 @@ local function GetAssignmentId(assignment)
     end
     if kind == "companion" then
         return tonumber(assignment.spellId) or tonumber(assignment.companionIndex)
+    end
+    if kind == "macro" then
+        return tonumber(assignment.macroIndex) or assignment.macroName or assignment.name
     end
     return tonumber(assignment.spellId)
 end
@@ -1883,6 +1986,14 @@ local function ResolveAssignment(assignment)
             assignment.spellId,
             assignment.name,
             assignment.icon
+        )
+    end
+    if kind == "macro" then
+        return DMLCD.ResolveMacro(
+            assignment.macroIndex,
+            assignment.macroName or assignment.name,
+            assignment.macroIcon or assignment.icon,
+            assignment.macroBody or assignment.macroText
         )
     end
     return ResolveSpell(assignment.spellId, assignment.name)
@@ -1908,6 +2019,15 @@ local function AssignmentMatches(left, right)
         end
         return tonumber(left.companionIndex) == tonumber(right.companionIndex)
     end
+    if leftKind == "macro" then
+        local leftIndex = tonumber(left.macroIndex)
+        local rightIndex = tonumber(right.macroIndex)
+        if leftIndex and rightIndex and leftIndex == rightIndex then
+            return true
+        end
+        return tostring(left.macroName or left.name or "") == tostring(right.macroName or right.name or "") and
+            tostring(left.macroBody or left.macroText or "") == tostring(right.macroBody or right.macroText or "")
+    end
     return tonumber(GetAssignmentId(left)) == tonumber(GetAssignmentId(right))
 end
 
@@ -1920,6 +2040,9 @@ local function GetAssignmentDisplayName(assignment)
     local id = GetAssignmentId(assignment)
     if kind == "companion" then
         return (DMLCD.NormalizeCompanionType(assignment.companionType) == "MOUNT" and "Mount " or "Companion pet ") .. tostring(id or "?")
+    end
+    if kind == "macro" then
+        return tostring(assignment.macroName or assignment.name or "Macro")
     end
     return (kind == "item" and "Item " or "Spell ") .. tostring(id or "?")
 end
@@ -2111,13 +2234,15 @@ function DMLCD.UpdateButtonResourceVisual(button, cache)
     DMLCD.ApplyButtonIconAppearance(button)
 end
 
+function DMLCD.RefreshResourceButtonVisual(_, button)
+    if button then
+        DMLCD.UpdateButtonResourceVisual(button, DMLCD.updateResourceCache)
+    end
+end
+
 function DMLCD.RefreshResourceVisuals()
-    local cache = {}
-    ForEachActiveButton(function(_, button)
-        if button then
-            DMLCD.UpdateButtonResourceVisual(button, cache)
-        end
-    end)
+    DMLCD.ClearScratchTable(DMLCD.updateResourceCache)
+    ForEachActiveButton(DMLCD.RefreshResourceButtonVisual)
 end
 
 function DMLCD.GetAssignmentRangeState(assignment, resolved)
@@ -2285,6 +2410,8 @@ if kind == "item" then
                 startTime, duration, enable = nil, nil, nil
             end
         end
+    elseif kind == "macro" then
+        return nil
     else
         if not assignment.spellId or not GetSpellCooldown then
             return nil
@@ -2379,6 +2506,13 @@ function DMLCD.GetSecureAssignmentValues(assignment, resolved)
         end
         return nil, nil
     end
+    if kind == "macro" then
+        local macroText = resolved.macroText or assignment.macroBody or assignment.macroText
+        if macroText and macroText ~= "" then
+            return "macro", macroText
+        end
+        return nil, nil
+    end
 
     if not resolved.clientKnown then
         return nil, nil
@@ -2414,6 +2548,7 @@ function DMLCD.ClearBarOneSecurePaging(button)
         button:SetAttribute("dml-type-" .. tostring(page), nil)
         button:SetAttribute("dml-spell-" .. tostring(page), nil)
         button:SetAttribute("dml-item-" .. tostring(page), nil)
+        button:SetAttribute("dml-macrotext-" .. tostring(page), nil)
     end
 end
 
@@ -2439,6 +2574,8 @@ function DMLCD.ConfigureBarOneSecurePaging(button)
             button:SetAttribute("dml-spell-" .. suffix, actionValue)
         elseif actionType == "item" then
             button:SetAttribute("dml-item-" .. suffix, actionValue)
+        elseif actionType == "macro" then
+            button:SetAttribute("dml-macrotext-" .. suffix, actionValue)
         end
     end
 
@@ -2447,18 +2584,22 @@ function DMLCD.ConfigureBarOneSecurePaging(button)
         self:SetAttribute("type1", self:GetAttribute("dml-type-" .. page))
         self:SetAttribute("spell1", self:GetAttribute("dml-spell-" .. page))
         self:SetAttribute("item1", self:GetAttribute("dml-item-" .. page))
+        self:SetAttribute("macrotext1", self:GetAttribute("dml-macrotext-" .. page))
         self:SetAttribute("type2", self:GetAttribute("dml-type-" .. page))
         self:SetAttribute("spell2", self:GetAttribute("dml-spell-" .. page))
         self:SetAttribute("item2", self:GetAttribute("dml-item-" .. page))
+        self:SetAttribute("macrotext2", self:GetAttribute("dml-macrotext-" .. page))
     ]])
 
     local currentPage = tostring(DMLCD.GetBarOneActionPage())
     button:SetAttribute("type1", button:GetAttribute("dml-type-" .. currentPage))
     button:SetAttribute("spell1", button:GetAttribute("dml-spell-" .. currentPage))
     button:SetAttribute("item1", button:GetAttribute("dml-item-" .. currentPage))
+    button:SetAttribute("macrotext1", button:GetAttribute("dml-macrotext-" .. currentPage))
     button:SetAttribute("type2", button:GetAttribute("dml-type-" .. currentPage))
     button:SetAttribute("spell2", button:GetAttribute("dml-spell-" .. currentPage))
     button:SetAttribute("item2", button:GetAttribute("dml-item-" .. currentPage))
+    button:SetAttribute("macrotext2", button:GetAttribute("dml-macrotext-" .. currentPage))
 
     if RegisterStateDriver then
         pcall(
@@ -2486,6 +2627,8 @@ local function SetSecureAction(button, assignment, resolved)
         button:SetAttribute("type2", nil)
         button:SetAttribute("spell2", nil)
         button:SetAttribute("item2", nil)
+        button:SetAttribute("macrotext1", nil)
+        button:SetAttribute("macrotext2", nil)
         return
     end
 
@@ -2502,6 +2645,8 @@ local function SetSecureAction(button, assignment, resolved)
     button:SetAttribute("type2", nil)
     button:SetAttribute("spell2", nil)
     button:SetAttribute("item2", nil)
+    button:SetAttribute("macrotext1", nil)
+    button:SetAttribute("macrotext2", nil)
 
     local actionType, actionValue = DMLCD.GetSecureAssignmentValues(assignment, resolved)
     if actionType == "item" then
@@ -2514,6 +2659,11 @@ local function SetSecureAction(button, assignment, resolved)
         button:SetAttribute("spell1", actionValue)
         button:SetAttribute("type2", "spell")
         button:SetAttribute("spell2", actionValue)
+    elseif actionType == "macro" then
+        button:SetAttribute("type1", "macro")
+        button:SetAttribute("macrotext1", actionValue)
+        button:SetAttribute("type2", "macro")
+        button:SetAttribute("macrotext2", actionValue)
     end
 end
 
@@ -2526,7 +2676,7 @@ local function ShowButtonTooltip(button)
         GameTooltip:SetText("Empty DML action slot")
         if not simple then
             if not DB.locked then
-                GameTooltip:AddLine("Drag a spell, item, mount, or companion pet here, or use an assignment command.", 0.8, 0.8, 0.8, true)
+                GameTooltip:AddLine("Drag a spell, item, macro, mount, or companion pet here, or use an assignment command.", 0.8, 0.8, 0.8, true)
             elseif DB.barLockKey ~= "NONE" then
                 GameTooltip:AddLine("Hold " .. GetBarLockKeyLabel() .. " while dropping an action here.", 0.8, 0.8, 0.8, true)
             end
@@ -2592,6 +2742,20 @@ local function ShowButtonTooltip(button)
             end
             if companion and not companion.available then
                 GameTooltip:AddLine("This companion is not currently available in the collection.", 1, 0.35, 0.35, true)
+            end
+        end
+    elseif kind == "macro" then
+        local macro = resolved
+        GameTooltip:SetText((macro and macro.name) or assignment.macroName or assignment.name or "Macro")
+        if not simple then
+            local macroText = (macro and macro.macroText) or assignment.macroBody or assignment.macroText
+            if macroText and macroText ~= "" then
+                GameTooltip:AddLine(macroText, 0.82, 0.82, 0.82, true)
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine("DML macro action", 0.4, 1, 0.6)
+            if macro and not macro.clientKnown then
+                GameTooltip:AddLine("Using the macro body saved in this DML profile.", 0.8, 0.8, 0.8, true)
             end
         end
     else
@@ -2751,6 +2915,11 @@ local function UpdateButton(button)
             assignment.companionIndex = resolved.companionIndex or assignment.companionIndex
             assignment.spellId = resolved.spellId or assignment.spellId
             assignment.icon = resolved.icon or assignment.icon
+        elseif kind == "macro" then
+            assignment.macroIndex = resolved.macroIndex or assignment.macroIndex
+            assignment.macroName = resolved.macroName or resolved.name or assignment.macroName
+            assignment.macroIcon = resolved.icon or assignment.macroIcon
+            assignment.macroBody = resolved.macroText or assignment.macroBody
         end
         button.dmlResolved = resolved
         button.icon:SetTexture(resolved.icon or QUESTION_ICON)
@@ -2779,6 +2948,8 @@ local function UpdateButton(button)
             button.actionName = assignment.name or
                 (DMLCD.NormalizeCompanionType(assignment.companionType) == "MOUNT" and "Mount " or "Companion pet ") ..
                 tostring(GetAssignmentId(assignment))
+        elseif kind == "macro" then
+            button.actionName = assignment.macroName or assignment.name or "Macro"
         else
             button.actionName = assignment.name or ((kind == "item" and "Item " or "Spell ") .. tostring(GetAssignmentId(assignment)))
         end
@@ -2803,12 +2974,14 @@ local function UpdateButton(button)
     end
 end
 
+function DMLCD.RefreshAllButtonEntry(_, button)
+    if button then
+        UpdateButton(button)
+    end
+end
+
 local function RefreshAllButtons()
-    ForEachActiveButton(function(_, button)
-        if button then
-            UpdateButton(button)
-        end
-    end)
+    ForEachActiveButton(DMLCD.RefreshAllButtonEntry)
 
     -- Keep the optional DML pet bar's empty-slot numbers synchronized with the
     -- same Show slot numbers setting used by the player bars.
@@ -2817,16 +2990,20 @@ local function RefreshAllButtons()
     end
 end
 
+function DMLCD.RefreshItemAssignmentEntry(index, button)
+    local assignment = DMLCD.GetAssignmentForIndex(index)
+    local itemId = DMLCD.refreshItemAssignmentId
+    if button and assignment and GetAssignmentKind(assignment) == "item" and
+        (not itemId or tonumber(assignment.itemId) == itemId)
+    then
+        UpdateButton(button)
+    end
+end
+
 function DMLCD.RefreshItemAssignmentButtons(itemId)
-    itemId = tonumber(itemId)
-    ForEachActiveButton(function(index, button)
-        local assignment = DMLCD.GetAssignmentForIndex(index)
-        if button and assignment and GetAssignmentKind(assignment) == "item" and
-            (not itemId or tonumber(assignment.itemId) == itemId)
-        then
-            UpdateButton(button)
-        end
-    end)
+    DMLCD.refreshItemAssignmentId = tonumber(itemId)
+    ForEachActiveButton(DMLCD.RefreshItemAssignmentEntry)
+    DMLCD.refreshItemAssignmentId = nil
 end
 
 function DMLCD.HandleItemInfoReceived(itemId, success)
@@ -2870,16 +3047,20 @@ function DMLCD.ScheduleBarOneStanceRefresh(delay)
     end
 end
 
+function DMLCD.RefreshCompanionAssignmentEntry(index, button)
+    local assignment = DMLCD.GetAssignmentForIndex(index)
+    local companionType = DMLCD.refreshCompanionType
+    if button and assignment and GetAssignmentKind(assignment) == "companion" and
+        (not companionType or DMLCD.NormalizeCompanionType(assignment.companionType) == companionType)
+    then
+        UpdateButton(button)
+    end
+end
+
 function DMLCD.RefreshCompanionAssignments(companionType)
-    companionType = DMLCD.NormalizeCompanionType(companionType)
-    ForEachActiveButton(function(index, button)
-        local assignment = DMLCD.GetAssignmentForIndex(index)
-        if button and assignment and GetAssignmentKind(assignment) == "companion" and
-            (not companionType or DMLCD.NormalizeCompanionType(assignment.companionType) == companionType)
-        then
-            UpdateButton(button)
-        end
-    end)
+    DMLCD.refreshCompanionType = DMLCD.NormalizeCompanionType(companionType)
+    ForEachActiveButton(DMLCD.RefreshCompanionAssignmentEntry)
+    DMLCD.refreshCompanionType = nil
 end
 
 local function FindAssignedButton(spellId)
@@ -3055,6 +3236,51 @@ local function AssignItemButton(index, itemId, suppliedName, feedbackMode, pageO
     return true
 end
 
+function DMLCD.AssignMacroButton(index, macroIndex, suppliedName, suppliedIcon, suppliedBody, feedbackMode, pageOverride)
+    index = tonumber(index)
+    macroIndex = tonumber(macroIndex)
+
+    if not index or not IsActiveButtonIndex(index) then
+        local message = "That DML button is not active."
+        if feedbackMode == "debug" then DebugPrint(message) else Print(message) end
+        return false
+    end
+    if IsInCombat() then
+        local message = "DML macro assignments cannot be changed during combat."
+        if feedbackMode == "debug" then DebugPrint(message) else Print(message) end
+        return false
+    end
+
+    local macro = DMLCD.ResolveMacro(macroIndex, suppliedName, suppliedIcon, suppliedBody)
+    if not macro then
+        local message = "That macro could not be resolved or has an empty body."
+        if feedbackMode == "debug" then DebugPrint(message) else Print(message) end
+        return false
+    end
+
+    DMLCD.SetAssignmentForIndex(index, {
+        kind = "macro",
+        macroIndex = macro.macroIndex or macroIndex,
+        macroName = macro.macroName or macro.name,
+        macroIcon = macro.icon,
+        macroBody = macro.macroText,
+        name = macro.name,
+        fallback = 0
+    }, pageOverride)
+
+    UpdateButton(buttons[index])
+    local feedback = FormatButtonRef(index) .. " assigned to macro " .. tostring(macro.name) .. "."
+    if feedbackMode == "debug" then
+        DebugPrint(feedback)
+    elseif feedbackMode ~= "silent" and feedbackMode ~= false then
+        Print(feedback)
+    end
+    if SaveCharacterLayoutSnapshot then
+        SaveCharacterLayoutSnapshot()
+    end
+    return true
+end
+
 local function AssignCompanionButton(index, companionType, companionIndex, spellId, suppliedName, suppliedIcon, feedbackMode, pageOverride)
     index = tonumber(index)
     companionType = DMLCD.NormalizeCompanionType(companionType)
@@ -3159,6 +3385,11 @@ local function CopyAssignment(assignment)
         copy.companionIndex = tonumber(assignment.companionIndex) or assignment.companionIndex
         copy.spellId = tonumber(assignment.spellId) or assignment.spellId
         copy.icon = assignment.icon
+    elseif copy.kind == "macro" then
+        copy.macroIndex = tonumber(assignment.macroIndex) or assignment.macroIndex
+        copy.macroName = assignment.macroName or assignment.name
+        copy.macroIcon = assignment.macroIcon or assignment.icon
+        copy.macroBody = assignment.macroBody or assignment.macroText
     else
         copy.spellId = tonumber(assignment.spellId) or assignment.spellId
     end
@@ -3208,6 +3439,31 @@ local function ExtractDraggedItemId()
     return itemId
 end
 
+function DMLCD.ExtractDraggedMacroAssignment(cursorType, info1)
+    if cursorType ~= "macro" then
+        return nil
+    end
+
+    local macroIndex = tonumber(info1)
+    if not macroIndex or not GetMacroInfo then
+        return nil
+    end
+
+    local ok, macroName, macroIcon, macroBody = pcall(GetMacroInfo, macroIndex)
+    if not ok or not macroName or not macroBody or macroBody == "" then
+        return nil
+    end
+
+    return {
+        kind = "macro",
+        macroIndex = macroIndex,
+        macroName = macroName,
+        macroIcon = macroIcon,
+        macroBody = macroBody,
+        name = macroName
+    }
+end
+
 local function ExtractCursorAssignment()
     if not GetCursorInfo then
         return nil
@@ -3227,6 +3483,8 @@ local function ExtractCursorAssignment()
         if itemId then
             return { kind = "item", itemId = itemId }
         end
+    elseif cursorType == "macro" then
+        return DMLCD.ExtractDraggedMacroAssignment(cursorType, info1)
     end
     return nil
 end
@@ -3236,7 +3494,7 @@ local function CursorContainsAction()
         return false
     end
     local cursorType = GetCursorInfo()
-    return cursorType == "spell" or cursorType == "item" or cursorType == "companion"
+    return cursorType == "spell" or cursorType == "item" or cursorType == "companion" or cursorType == "macro"
 end
 
 local function FindSpellBookSlot(spellId)
@@ -3271,6 +3529,31 @@ local function PickupAssignedAction(assignment)
     end
 
     local kind = GetAssignmentKind(assignment)
+    if kind == "macro" then
+        if not PickupMacro then
+            return false
+        end
+        local macro = DMLCD.ResolveMacro(
+            assignment.macroIndex,
+            assignment.macroName or assignment.name,
+            assignment.macroIcon or assignment.icon,
+            assignment.macroBody or assignment.macroText
+        )
+        local macroIndex = macro and tonumber(macro.macroIndex) or tonumber(assignment.macroIndex)
+        if (not macroIndex or macroIndex <= 0) and GetMacroIndexByName then
+            local ok, foundIndex = pcall(GetMacroIndexByName, assignment.macroName or assignment.name)
+            macroIndex = ok and tonumber(foundIndex) or nil
+        end
+        if not macroIndex or macroIndex <= 0 then
+            return false
+        end
+        local ok = pcall(PickupMacro, macroIndex)
+        if not ok then
+            return false
+        end
+        local cursorAssignment = ExtractCursorAssignment()
+        return cursorAssignment and AssignmentMatches(assignment, cursorAssignment) or false
+    end
     if kind == "companion" then
         if not PickupCompanion then
             return false
@@ -3888,7 +4171,7 @@ local function HandleActionDrop(button)
 
     local cursorAssignment = ExtractCursorAssignment()
     if not cursorAssignment then
-        DebugPrint("That cursor does not contain a usable spell, item, mount, or companion pet.")
+        DebugPrint("That cursor does not contain a usable spell, item, macro, mount, or companion pet.")
         return false
     end
 
@@ -3955,6 +4238,16 @@ local function HandleActionDrop(button)
     local assigned
     if cursorAssignment.kind == "item" then
         assigned = AssignItemButton(targetIndex, cursorAssignment.itemId, nil, "debug", targetPage)
+    elseif cursorAssignment.kind == "macro" then
+        assigned = DMLCD.AssignMacroButton(
+            targetIndex,
+            cursorAssignment.macroIndex,
+            cursorAssignment.macroName or cursorAssignment.name,
+            cursorAssignment.macroIcon or cursorAssignment.icon,
+            cursorAssignment.macroBody or cursorAssignment.macroText,
+            "debug",
+            targetPage
+        )
     elseif cursorAssignment.kind == "companion" then
         assigned = AssignCompanionButton(
             targetIndex,
@@ -5209,6 +5502,27 @@ local function LayoutButtons()
     end
 end
 
+function DMLCD.UpdateIdleButtonVisuals(_, button)
+    if not button then
+        return
+    end
+
+    local assignment = DMLCD.GetAssignmentForIndex(button.dmlIndex)
+    UpdateButtonCooldownVisual(button, false)
+    DMLCD.UpdateButtonResourceVisual(button, DMLCD.updateResourceCache)
+    DMLCD.UpdateButtonActionStateVisual(
+        button,
+        assignment,
+        button.dmlResolved
+    )
+    DMLCD.UpdateButtonRangeVisual(
+        button,
+        assignment,
+        button.dmlResolved,
+        DMLCD.updateRangeCache
+    )
+end
+
 local function CreateUpdateFrame()
     if updateFrame then
         return
@@ -5264,12 +5578,12 @@ local function CreateUpdateFrame()
             end
         end
 
-        local expired = {}
+        local expired = DMLCD.ClearScratchTable(DMLCD.updateExpiredCooldowns)
         local key, state
         for key, state in pairs(DB.cooldowns) do
             local remaining = GetRemaining(state)
             if remaining <= 0 then
-                table.insert(expired, tonumber(state.spellId) or tonumber(key))
+                expired[#expired + 1] = tonumber(state.spellId) or tonumber(key)
             end
         end
 
@@ -5278,26 +5592,9 @@ local function CreateUpdateFrame()
             ClearCooldown(expired[i], true, nil)
         end
 
-        local resourceCache = {}
-        local rangeCache = {}
-        ForEachActiveButton(function(_, button)
-            if button then
-                local assignment = DMLCD.GetAssignmentForIndex(button.dmlIndex)
-                UpdateButtonCooldownVisual(button, false)
-                DMLCD.UpdateButtonResourceVisual(button, resourceCache)
-                DMLCD.UpdateButtonActionStateVisual(
-                    button,
-                    assignment,
-                    button.dmlResolved
-                )
-                DMLCD.UpdateButtonRangeVisual(
-                    button,
-                    assignment,
-                    button.dmlResolved,
-                    rangeCache
-                )
-            end
-        end)
+        DMLCD.ClearScratchTable(DMLCD.updateResourceCache)
+        DMLCD.ClearScratchTable(DMLCD.updateRangeCache)
+        ForEachActiveButton(DMLCD.UpdateIdleButtonVisuals)
     end)
 end
 
@@ -7538,6 +7835,7 @@ eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("LEARNED_SPELL_IN_TAB")
+eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELL_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("ACTIONBAR_UPDATE_USABLE")
@@ -7649,6 +7947,8 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         DMLCD.RefreshCompanionAssignments(companionType)
     elseif event == "SPELLS_CHANGED" or event == "LEARNED_SPELL_IN_TAB" then
         HandleSpellbookChanged()
+        RefreshAllButtons()
+    elseif event == "UPDATE_MACROS" then
         RefreshAllButtons()
     elseif event == "BAG_UPDATE" then
         -- Bag changes affect item assignments only. Successful item data remains

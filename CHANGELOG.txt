@@ -1,3 +1,21 @@
+DML Cooldown Bar 2.0.76
+=======================
+
+- Fixed idle memory growth and random garbage-collection spikes by reusing the
+  0.1-second update loop's cooldown, resource, and range scratch tables.
+- Replaced the unbounded Bagnon item-link negative cache with a 512-entry cap,
+  preventing permanent growth while retaining fast repeated bag refreshes.
+- Removed the temporary return-value table allocated for every Bagnon item-slot
+  refresh while still preserving the upstream function's exact return values.
+- Reduced additional allocation churn on bag, resource, companion, and full-bar
+  refresh paths by using reusable callbacks and scratch caches.
+- Added drag-and-drop macro support for normal DML bars. Macro names, icons, and
+  bodies are saved with profiles and character layouts, and buttons execute them
+  through secure macro clicks and keybinds.
+- Added macro support to DML-to-DML moving/swapping and Bar 1 stance pages.
+- Preserved custom spells, custom items, mounts, companion pets, the combat pet
+  bar, cooldown protocols, and current profile data.
+
 DML Cooldown Bar 2.0.75
 =======================
 

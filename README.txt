@@ -1,9 +1,9 @@
-DML COOLDOWN BAR 2.0.73
+DML COOLDOWN BAR 2.0.76
 World of Warcraft 3.3.5a / AzerothCore / ALE
 
 PURPOSE
 -------
-DML Cooldown Bar provides configurable Blizzard-style spell, item, mount, and companion-pet bars.
+DML Cooldown Bar provides configurable Blizzard-style spell, item, macro, mount, and companion-pet bars.
 It displays normal client spell/item cooldowns and custom AzerothCore spell
 cooldowns supplied by an ALE server script. Actions are activated only by a
 player click or saved DML keybind.
@@ -28,7 +28,7 @@ INSTALLATION
 
    /dmlcd version
 
-It should report version 2.0.73. Existing character settings migrate automatically.
+It should report version 2.0.76. Existing character settings migrate automatically.
 
 CONFIGURATION WINDOW
 --------------------
@@ -77,7 +77,7 @@ BAR ANCHORS
 -----------
 Show anchors is enabled by default and controls the visible draggable header
 above each DML bar. Turning it off hides those headers without locking the bars.
-This lets players keep normal unlocked spell/item drag-and-drop behavior without
+This lets players keep normal unlocked action drag-and-drop behavior without
 leaving the movement anchors visible.
 
 To reposition a bar later, enable Show anchors again, move the bar, and hide the
@@ -112,7 +112,7 @@ A named profile saves:
 - Bar count, button count, rows, and columns
 - Button size and horizontal/vertical gaps
 - Bar positions, pet-bar position and enable state, visibility, background, lock, and anchor-visibility settings
-- Spell and item assignments
+- Spell, item, macro, mount, and companion-pet assignments
 - Manual fallback cooldown values
 - DML keybindings
 - Slot-number, Blizzard-bar, gryphon, minimap, chat, and cooldown settings
@@ -235,12 +235,12 @@ After changing an icon mapping, use /reload or close and reopen Bagnon so every
 visible slot refreshes. If Bagnon is disabled, this compatibility file quietly
 does nothing and DML Cooldown Bar continues to work normally.
 
-ITEM AND SPELL ACTIONS
-----------------------
+DML ACTIONS
+-----------
 Unlocked bars accept normal drag/drop. Locked bars use the configured Shift,
 Ctrl, or Alt modifier. Actions can be moved, swapped, or removed by dragging them off the bar.
-Left-click and right-click both activate the assigned action. Items and spells
-can both use DML keybinds.
+Left-click and right-click both activate the assigned action. Spells, items,
+macros, mounts, and companion pets can all use DML keybinds.
 
 Spell commands:
 
@@ -325,9 +325,10 @@ Enable or disable custom item icon overrides from /dmlcd config with the
 /dmlcd bagnon on
 /dmlcd bagnon off
 
-The compatibility layer caches resolved item links and changes only mapped
-custom-item texture results. It does not replace Bagnon's normal slot texture
-clearing, so moved items should not leave icon copies behind.
+The compatibility layer changes only mapped custom-item texture results and
+uses a bounded 512-entry item-link cache. It does not replace Bagnon's normal
+slot texture clearing, so moved items should not leave icon copies behind or
+allow the compatibility cache to grow for the entire play session.
 
 CUSTOM SPELL RANKS AND TOOLTIP TEXT (v1.8.0)
 
@@ -476,6 +477,17 @@ The config window has a Number of bars dropdown and a Bar settings dropdown.
 Select a bar, edit its button count, rows, columns, button size, and gaps, then
 switch to another bar. Each draft is retained until Apply and is saved in the
 current character layout and named profiles.
+
+MACROS
+------
+Drag a global or character macro from Blizzard's macro window onto any normal
+DML bar slot. DML stores the macro name, icon, and body with the assignment, so
+named profiles and character layouts remain usable after copying SavedVariables
+to another computer even when macro indices differ. Clicking the button or using
+its DML keybind executes the saved body through a secure macro action. Macros
+can be moved, swapped, cleared, and assigned separately on Bar 1 stance pages.
+When a matching live macro exists, UPDATE_MACROS refreshes the DML assignment
+outside combat after the macro is edited.
 
 MOUNTS AND NON-COMBAT COMPANION PETS
 ------------------------------------
