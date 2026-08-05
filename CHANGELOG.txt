@@ -1,0 +1,317 @@
+DML Cooldown Bar 2.0.75
+=======================
+
+- Made Bagnon compatibility safe to leave enabled by preserving every return
+  value from the installed Bagnon slot API instead of truncating the result.
+- Added non-stacking, reversible Bagnon wrappers; disabling compatibility now
+  removes DML's direct hooks when safe and otherwise becomes a transparent
+  pass-through without disrupting other addons.
+- Changed assigned-item resolution to one GetItemInfo call with a session cache
+  and a five-second retry delay for unresolved item data.
+- BAG_UPDATE now refreshes only DML item assignments, while
+  GET_ITEM_INFO_RECEIVED refreshes only buttons for the reported item ID.
+- Preserved custom item icons, secure item clicks, cooldowns, profiles, mounts,
+  companion pets, combat-pet bar behavior, and all custom metadata files.
+
+DML Cooldown Bar 2.0.74
+
+- Added drag-and-drop support for Wrath mounts and non-combat companion pets on normal DML bars.
+- Mounts and companion pets can be summoned from secure DML button clicks and keybinds.
+- Added companion cooldowns, active-state highlights, tooltips, moving/swapping, stance pages, profiles, and character-layout persistence.
+- Added a 3.3.5a PickupCompanion compatibility hook for clients that report companion drags as an empty spell cursor.
+- Preserved the separate movable DML combat-pet action bar.
+
+DML Cooldown Bar 2.0.73
+=======================
+
+- Synchronized empty DML pet-bar slot numbers with the existing Show slot
+  numbers setting used by the player action bars.
+- Pet slots containing actions remain number-free, while empty pet slots show
+  their numbers only when Show slot numbers is enabled.
+- Updated addon and TOC versions to 2.0.73.
+
+DML Cooldown Bar 2.0.72
+=======================
+
+- Added an opt-in Use DML pet bar setting beside Show anchors.
+- Added a compact ten-button pet action bar with pet cooldowns, active state,
+  usability tinting, autocast indication, tooltips, secure left-click actions,
+  right-click autocast proxying, and pet action drag/drop outside combat.
+- The DML pet bar uses the shared Show anchors and Lock bars behavior and keeps
+  its own saved position in character layouts and named profiles.
+- Reset Positions now also restores the DML pet bar to its default center area.
+- Enabling the DML pet bar hides Blizzard's pet action bar without hiding pet
+  controls, XP, bags, micro menu, stance bars, or vehicle controls.
+- Updated addon and TOC versions to 2.0.72.
+
+DML Cooldown Bar 1.9.9
+======================
+
+- Added Holy Bolt Rank 1 (34232) and Rank 2 (34346) custom tooltip metadata.
+- Added event-driven DMLCD|MANA|spellId|extraManaCost protocol support.
+- Generalized the BONUS cache naming while retaining exact spell-ID behavior.
+- BONUS and MANA values now clear their cache entry when the server sends 0.
+- Combined dynamic damage and mana scaling into one tooltip line when both are
+  present, while still supporting either value independently.
+- Matching open tooltips refresh through the existing event-driven path.
+- No new polling, timers, combat-log scans, level scans, or aura scans were added.
+
+DML Cooldown Bar 1.9.8
+======================
+
+- Added event-driven DMLCD|BONUS|spellId|bonusDamage protocol support.
+- Dynamic bonus damage is cached by exact spell ID for the current UI session.
+- The server bonus is shown directly beneath the existing local custom_text,
+  so Holy Strike keeps its locally configured base damage range.
+- A received BONUS message refreshes the matching visible tooltip immediately.
+- No OnUpdate polling, aura scanning, or combat-log scanning was added.
+- No v1.9.7 active-form, stance, paladin-aura, casting, cooldown, or layout
+  behavior was changed.
+
+DML Cooldown Bar 1.9.7
+======================
+
+- Rebuilt from the v1.9.3 master after discarding the failed v1.9.4 through
+  v1.9.6 active-icon experiments.
+- Active stance/form/aura-bar spells now use the fixed
+  Spell_Nature_WispSplode texture and the existing pale-yellow state border.
+- This applies to client stance-bar entries such as Shadowform, warrior
+  stances, druid shapeshifts, and paladin auras.
+- Holyform spell 46565 and Shadowform spell 15473 use exact aura fallbacks
+  when a 3.3.5 client does not expose them as stance-bar entries.
+- Inactive spells always return to their own spell-ID texture.
+- Ordinary timed buffs are not classified as active stance/form/aura spells.
+- Removed Holyform's dependency on whichever unrelated stance or paladin aura
+  happened to be active.
+
+DML Cooldown Bar 1.9.3
+======================
+
+- Applied a minor lower-left border alignment polish without moving the top or
+  right edges: both queue and range borders extend one pixel farther left and
+  two pixels farther down.
+- Softened both overlays by lowering their opacity to 76% while preserving the
+  existing two-pixel line thickness and colors.
+- No casting, Holyform, range-detection, profile, or per-bar layout behavior
+  changed in this release.
+
+DML Cooldown Bar 1.9.2
+======================
+
+- Changed the queued/current-action border to a paler white-yellow with a
+  small amount of transparency while keeping the line two pixels thick.
+- Expanded the queued border to the full inner icon edge, making its box two
+  pixels wider and taller without thickening the line.
+- Expanded Border range-finder warnings to the same full inner icon edge so
+  the red warning no longer appears as a small box over the icon.
+- Removed the unreliable Default range-dot mode. Existing saved DEFAULT values
+  migrate safely to Off; Range finder now offers Off, Border, and Fade.
+- Preserved the working Holyform active-icon behavior from v1.9.1.
+
+DML Cooldown Bar 1.9.1
+======================
+
+- Replaced the broad translucent queued-spell glow with a darker 2-pixel
+  yellow border drawn inside the spell icon.
+- Added a saved Range finder dropdown with Off, Default, Border, and Fade.
+- Default shows a neutral gray target dot and turns it red when the assigned
+  spell or item is out of range.
+- Border draws an inner red border only while the target is out of range.
+- Fade lowers the icon opacity only while the target is out of range.
+- Holyform now prefers the active shapeshift-form icon and uses Devotion Aura
+  as a guaranteed active-state fallback when the client exposes no alternate.
+
+DML Cooldown Bar 1.9.0
+
+- Added independent saved geometry for Bars 1 through 5: button count, rows,
+  columns, button size, horizontal gap, and vertical gap.
+- Replaced Number of bars with a 1-5 dropdown and added a Bar settings
+  dropdown that prefills and edits the selected bar.
+- Per-bar layouts are included in named profiles and character snapshots.
+- Migrates existing layouts by copying the old shared geometry to all bars.
+- Reduced the Holy Strike queued border from the oversized 64:36 artwork
+  scale to a thinner 50:36 scale and lowered its opacity to 65%.
+- Holyform active-icon detection now reads the icon texture actually rendered
+  by Blizzard's matching action button before falling back to API textures.
+
+DML Cooldown Bar 1.8.8
+======================
+
+- Added Blizzard-style current-action highlighting. On-next-melee abilities
+  such as Holy Strike show a yellow border while queued.
+- Toggle spells such as Holyform now update their DML icon while active when
+  the client exposes an active Spell.dbc icon.
+- DML learns and caches the active icon from an exact matching Blizzard action
+  slot, while DMLCustomSpells.lua also supports an optional active_icon field.
+- Exact spell IDs are used for action-state checks so Holy Strike ranks do not
+  highlight each other.
+
+DML Cooldown Bar 1.8.7
+======================
+
+- Changed the spell tooltip's Remaining cooldown line to use the same green
+  text color as the spell rank and total Spell cooldown lines.
+
+DML Cooldown Bar 1.8.6
+======================
+
+- Restored normal toggle behavior for spells such as Holyform.
+- DML now uses exact numeric secure casting only for custom spell families with
+  multiple ranks, such as Holy Strike 13953 and 17143.
+- Unranked and toggle spells use their normal client cast name, matching
+  Blizzard action-bar behavior while preserving the Holy Strike rank fix.
+
+DML Cooldown Bar 1.8.5
+======================
+
+- Fixed secure casting for custom spells that share a name or expose duplicate
+  client rank text. DML buttons now cast by exact numeric spell ID instead of
+  a name such as Holy Strike(Rank 1).
+- Holy Strike 13953 and 17143 can now coexist on DML bars and cast their exact
+  assigned ranks, matching Blizzard action-bar behavior.
+
+DML Cooldown Bar 1.8.4
+
+- Fixed a WoW 3.3.5 Lua compiler failure caused by exceeding the 200 top-level local-variable limit in 1.8.3.
+- Retains the Holy Strike damage text, total/remaining cooldown tooltip lines, Simple tooltips option, and right-click casting from 1.8.3.
+- Reimplemented cooldown helper functions on the addon table so the file remains below the client compiler limit.
+
+DML Cooldown Bar 1.8.3
+
+- Added finalized Holy Strike Rank 1 and Rank 2 damage text to
+  DMLCustomSpells.lua.
+- Spell tooltips now show the known total spell cooldown below the custom rank,
+  followed by remaining cooldown while active.
+- ALE START and native Blizzard cooldown data are cached so an initially unknown
+  total cooldown becomes available after the spell is first used.
+- Added a Simple tooltips checkbox in the Layout column. It hides DML tracking,
+  fallback, source, keybind, and drag-instruction lines while preserving spell,
+  rank, damage, resource, and cooldown information.
+- Removed right-click assignment clearing. Right-click now activates the same
+  spell or item as left-click; assignments are removed only by dragging them off.
+
+DML Cooldown Bar 1.8.2
+
+- Removed the unusable pending combat-assignment behavior. DML spell and item
+  assignments now remain fully locked during combat instead of showing an icon
+  that cannot cast until combat ends.
+- Newly learned spells detected during combat are queued internally and safely
+  auto-assigned after combat, without changing any visible DML slot mid-combat.
+- Custom spell rank text now appears directly below custom tooltip text.
+- This build is based on 1.8.0 and does not include the 1.8.1 pending-swap patch.
+
+DML Cooldown Bar 1.8.0
+
+- Auto-assign now reacts to newly learned active spells instead of the first
+  DMLCD START message received when a spell is used.
+- Newly learned spells fill the first empty active slot in bar order: bar 1,
+  then bar 2, through bar 5.
+- Existing spellbook contents become the login baseline and are not mass-added.
+- Passive spells are ignored. Higher ranks replace the assigned rank of the
+  same spell rather than consuming another slot.
+- Added optional DMLCD|LEARN|spellId|0|0|spellName protocol support for custom
+  ALE learning paths that do not fire normal client spellbook events.
+- Spells may now be added to empty slots during combat. They display immediately
+  with a pending marker and become click-castable automatically after combat.
+- Occupied-slot replacement, movement, clearing, item additions, profile loads,
+  layout changes, and secure keybind changes remain blocked or queued during
+  combat to avoid protected-action mismatches.
+- Added /dmlcd testlearn <spellId> for learned-spell testing.
+
+DML Cooldown Bar 1.6.5
+
+- Added a saved Bagnon compatibility checkbox and /dmlcd bagnon on|off.
+- Replaced the SetTexture hook with a narrow GetItemSlotInfo texture override.
+- Fixed ghost/shadow icons left in old slots after moving custom or normal items.
+- Added positive and negative item-link icon caching to reduce bag-open work.
+- Toggling compatibility now refreshes already visible Bagnon slots.
+
+DML Cooldown Bar 1.6.4
+
+- Added non-invasive Bagnon 2.13.3 / WoW 3.3.5a icon compatibility.
+- Custom item IDs in DMLCustomItems.lua now use the same override texture in
+  Bagnon inventory, bank, keyring, cached-character, and guild-bank slots.
+- Added OptionalDeps: Bagnon so Bagnon loads first when enabled; DML still works
+  normally when Bagnon is absent or disabled.
+- Bagnon source files are not patched or replaced.
+
+DML Cooldown Bar 1.6.3
+
+- Added Show anchors directly below Hide gryphons in the Layout column.
+- Hiding anchors removes the visible DML drag headers without locking the bars,
+  so unlocked spell/item drag-and-drop remains available.
+- Added /dmlcd anchors on|off and included anchor visibility in profiles and
+  character-layout copies.
+- Updated unlock feedback to explain when anchors are hidden.
+
+DML Cooldown Bar 1.6.2
+
+- Replaced full-frame screen clamping with a custom recoverable-edge clamp.
+- DML bar borders/padding may extend up to 6 pixels beyond the bottom, left,
+  or right edge, allowing action buttons to align flush with the screen.
+- The complete unlocked drag handle remains below the top screen edge.
+- Bars dropped too far outside the screen snap back to the nearest safe edge.
+- Layout resizing and profile loading also re-check saved bar positions.
+
+DML Cooldown Bar 1.6.1
+
+- Creates a default named profile for the current character on first load.
+- Prefills and selects the current character's profile name in the config window.
+- Fixed the profile-name input background rendering behind the dialog artwork.
+- Copy Character now lists only other characters, auto-selects the first available source, and disables the copy button when none exist.
+- Character snapshots now update immediately after assignment changes, DML bar movement, and minimap-button movement.
+- Added clearer Copy Character validation and confirmation text.
+
+DML COOLDOWN BAR CHANGELOG
+
+1.6.0
+-----
+- Raised all DML action bars to the HIGH frame strata so they render over the
+  remaining Blizzard main-bar artwork when placed in that area.
+- Moved Locked-bar drag modifier into the right-side Behavior column.
+- Added account-wide named profiles for settings, bar geometry, positions,
+  spell/item assignments, fallback values, and DML keybinds.
+- Added automatic per-character layout snapshots and character-to-character
+  layout copying.
+- Added profile Save, Load, Delete, and Copy Character controls to /dmlcd config.
+- Added /dmlcd profile save, load, delete, list, characters, and copy commands.
+- Profile loads and character copies requested during combat are queued until
+  combat ends. Active cooldown timers are intentionally not copied.
+- Existing v1.5.0 per-character settings migrate automatically.
+
+1.5.0
+-----
+- Moved the Blizzard bar dropdown and Hide gryphons checkbox into the left-side
+  Layout column of /dmlcd config.
+- Renamed the GUI cooldown option to Normal spell/item cooldowns.
+- Clarified Click fallback as an ALE backup in the configuration window.
+- Added item actions to DML bars. Items can be dragged from bags, clicked,
+  keybound, moved, swapped, and removed using the same bar-lock rules as spells.
+- Added native Blizzard item cooldown spirals through GetItemCooldown.
+- Added /dmlcd assignitem and /dmlcd assignitembar.
+- Added DMLCustomItems.lua, a separate user-editable item ID/name/icon map.
+- Added icon overrides for item IDs 990100 through 990112 so they no longer use
+  the question-mark texture on DML bars when the unpatched client cannot resolve
+  their icon.
+- Existing v1.4.0 spell assignments, bars, keybinds, positions, and settings are
+  migrated automatically.
+
+1.4.0
+-----
+- Added configurable Blizzard main-bar display modes and Hide gryphons.
+- Left XP, bags, micro menu, and their positions unchanged.
+
+1.8.0
+- Added low-resource fading for spell buttons. IsUsableSpell drives mana,
+  rage, energy, and runic-power shortages for normal and client-known custom
+  spells; cooldown desaturation and resource fading now compose correctly.
+- Added a Behavior checkbox and /dmlcd resourcefade on|off.
+- Added DMLCustomSpells.lua for custom name, family, numeric rank, tooltip text,
+  and optional icon metadata.
+- Added Holy Strike metadata examples: spell 13953 Rank 1 and spell 17143
+  Rank 2 in the shared holy_strike family.
+- Custom numeric ranks now prevent lower custom ranks from replacing higher
+  ranks when multiple client records incorrectly say Rank 1.
+- Added optional rank/customText/family fields to START, READY, and LEARN.
+- Added DMLCD|META for updating tooltip/rank metadata without auto-assigning.
+- Added /dmlcd testmeta for testing tooltip metadata.

@@ -1,0 +1,15 @@
+## Interface: 30300
+## Title: DML Cooldown Bar
+## Notes: Configurable Blizzard-style spell, item, mount, and companion-pet buttons with AzerothCore ALE cooldown support.
+## Author: Spaghetti Dog Games
+## Version: 2.0.75
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## OptionalDeps: Bagnon
+## SavedVariables: DMLCooldownBarGlobalDB
+## SavedVariablesPerCharacter: DMLCooldownBarDB
+
+DMLCustomItems.lua
+DMLCustomSpells.lua
+DMLCooldownBar.lua
+DMLBagnonIcons.lua
