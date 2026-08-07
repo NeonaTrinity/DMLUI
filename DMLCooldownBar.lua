@@ -33,7 +33,7 @@ DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
 DMLCD.ITEM_INFO_RETRY_DELAY = 5
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.77"
+local ADDON_VERSION = "2.0.78"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -82,7 +82,7 @@ local BAR_DRAG_HANDLE_HEIGHT = 18
 local BAR_DRAG_HANDLE_GAP = 2
 
 local defaults = {
-    version = 21,
+    version = 22,
     locked = false,
     shown = true,
     barCount = 1,
@@ -108,6 +108,7 @@ local defaults = {
     debugMessages = false,
     blizzardBarMode = "SHOW",
     hideGryphons = false,
+    useDMLAuraBar = false,
     useDMLPetBar = false,
     useBar1AsStanceBar = false,
     showAnchors = true,
@@ -576,6 +577,14 @@ local function CopyDefaults(reset)
             y = -110
         }
     end
+    if reset or type(DB.auraBarPosition) ~= "table" then
+        DB.auraBarPosition = {
+            point = "CENTER",
+            relativePoint = "CENTER",
+            x = 0,
+            y = -70
+        }
+    end
 
     -- Migrate the original single-bar position into bar 1.
     if not DB.barPositions[1] then
@@ -587,7 +596,7 @@ local function CopyDefaults(reset)
         }
     end
 
-    DB.version = 21
+    DB.version = 22
     DB.barCount = Clamp(DB.barCount, 1, MAX_BARS) or defaults.barCount
     DB.buttonCount = Clamp(DB.buttonCount, 1, MAX_BUTTONS) or defaults.buttonCount
     DB.columns = Clamp(DB.columns, 1, MAX_BUTTONS) or defaults.columns
@@ -650,6 +659,7 @@ local function CopyDefaults(reset)
     DB.showReadyMessages = DB.showReadyMessages and true or false
     DB.debugMessages = DB.debugMessages and true or false
     DB.hideGryphons = DB.hideGryphons and true or false
+    DB.useDMLAuraBar = DB.useDMLAuraBar and true or false
     DB.useDMLPetBar = DB.useDMLPetBar and true or false
     DB.useBar1AsStanceBar = DB.useBar1AsStanceBar and true or false
     DB.showAnchors = DB.showAnchors ~= false
@@ -777,6 +787,9 @@ local function SaveAllPositions()
     if DMLCD.SavePetBarPosition then
         DMLCD.SavePetBarPosition()
     end
+    if DMLCD.SaveAuraBarPosition then
+        DMLCD.SaveAuraBarPosition()
+    end
 end
 
 local function DeepCopy(value, seen)
@@ -815,12 +828,11 @@ local function InitializeGlobalDB()
         globalDB.profiles = {}
     end
 
-    -- v2.0.77 unifies the old automatic character-layout snapshots with the
-    -- named profile system. Existing named profiles always win. Legacy
-    -- character layouts are migrated once into the same deletable profile list
-    -- and the parallel characterLayouts table is then retired.
+    -- Legacy Character-Realm snapshots are migrated once into the normal
+    -- profile list. Nothing is discarded: when a character-name profile
+    -- already exists, the imported snapshot becomes Name-ac-2, Name-ac-3, etc.
+    -- After migration the old parallel table is deleted permanently.
     if type(globalDB.characterLayouts) == "table" then
-        local migratedNames = {}
         local characterKey, record
         for characterKey, record in pairs(globalDB.characterLayouts) do
             if type(record) == "table" then
@@ -831,28 +843,25 @@ local function InitializeGlobalDB()
 
                 local targetName = characterName
                 if globalDB.profiles[targetName] then
-                    if migratedNames[targetName] and not globalDB.profiles[tostring(characterKey)] then
-                        targetName = tostring(characterKey)
-                    else
-                        targetName = nil
-                    end
+                    local suffix = 2
+                    repeat
+                        targetName = characterName .. "-ac-" .. tostring(suffix)
+                        suffix = suffix + 1
+                    until not globalDB.profiles[targetName]
                 end
 
-                if targetName and not globalDB.profiles[targetName] then
-                    globalDB.profiles[targetName] = {
-                        sourceCharacter = tostring(characterKey),
-                        savedAt = tonumber(record.savedAt) or 0,
-                        automatic = true,
-                        data = DeepCopy(type(record.data) == "table" and record.data or record)
-                    }
-                    migratedNames[targetName] = true
-                end
+                globalDB.profiles[targetName] = {
+                    sourceCharacter = tostring(characterKey),
+                    savedAt = tonumber(record.savedAt) or 0,
+                    automatic = nil,
+                    data = DeepCopy(type(record.data) == "table" and record.data or record)
+                }
             end
         end
     end
 
     globalDB.characterLayouts = nil
-    globalDB.version = 2
+    globalDB.version = 3
 end
 
 local function GetCurrentCharacterIdentity()
@@ -880,6 +889,7 @@ local function BuildLayoutSnapshot()
     snapshot.keybinds = DeepCopy(DB.keybinds or {})
     snapshot.barPositions = DeepCopy(DB.barPositions or {})
     snapshot.petBarPosition = DeepCopy(DB.petBarPosition or {})
+    snapshot.auraBarPosition = DeepCopy(DB.auraBarPosition or {})
     snapshot.barSettings = DeepCopy(DB.barSettings or {})
     snapshot.point = DB.point
     snapshot.relativePoint = DB.relativePoint
@@ -924,16 +934,30 @@ end
 
 local function GetDefaultProfileName()
     local characterKey, characterName = GetCurrentCharacterIdentity()
-    local profileName = characterName
 
-    -- Named profiles are account-wide. If another realm already owns the same
-    -- character-name profile, use the full Character-Realm key to avoid
-    -- silently overwriting that profile.
+    -- Reuse the automatic profile already associated with this exact character.
+    -- This keeps a collision-resolved Name-ac-N profile stable across sessions.
+    if globalDB and globalDB.profiles then
+        local savedName, record
+        for savedName, record in pairs(globalDB.profiles) do
+            if type(record) == "table" and record.automatic and
+                tostring(record.sourceCharacter or "") == tostring(characterKey)
+            then
+                return tostring(savedName)
+            end
+        end
+    end
+
+    local profileName = characterName
     local existing = globalDB and globalDB.profiles and globalDB.profiles[profileName]
     if existing and existing.sourceCharacter and
         tostring(existing.sourceCharacter) ~= tostring(characterKey)
     then
-        profileName = characterKey
+        local suffix = 2
+        repeat
+            profileName = characterName .. "-ac-" .. tostring(suffix)
+            suffix = suffix + 1
+        until not globalDB.profiles[profileName]
     end
 
     return profileName
@@ -4612,6 +4636,16 @@ local function ApplyBackground()
             DMLCD.petBar:SetBackdropBorderColor(0, 0, 0, 0)
         end
     end
+
+    if DMLCD.auraBar then
+        if DB.background then
+            DMLCD.auraBar:SetBackdropColor(0.04, 0.04, 0.04, 0.78)
+            DMLCD.auraBar:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.9)
+        else
+            DMLCD.auraBar:SetBackdropColor(0, 0, 0, 0)
+            DMLCD.auraBar:SetBackdropBorderColor(0, 0, 0, 0)
+        end
+    end
 end
 
 local function ApplyLockState()
@@ -4632,6 +4666,15 @@ local function ApplyLockState()
             DMLCD.petBarHandle:Hide()
         else
             DMLCD.petBarHandle:Show()
+        end
+    end
+
+    if DMLCD.auraBarHandle then
+        local auraCount = GetNumShapeshiftForms and tonumber(GetNumShapeshiftForms()) or 0
+        if DB.locked or not DB.showAnchors or not DB.useDMLAuraBar or auraCount < 1 then
+            DMLCD.auraBarHandle:Hide()
+        else
+            DMLCD.auraBarHandle:Show()
         end
     end
 end
@@ -4686,7 +4729,12 @@ local function SetBlizzardElementHidden(name, hidden, disableMouse)
         return
     end
 
-    local state = blizzardElementStates[name]
+    -- Key the saved state by the actual frame object, not its global name.
+    -- Some 3.3.5 UI builds expose aliases (for example StanceButton and
+    -- ShapeshiftButton) that can reference the same frame. Name-keyed state can
+    -- otherwise save alpha 1 through one alias, alpha 0 through the second, and
+    -- later restore the shared button to invisible.
+    local state = blizzardElementStates[element]
     if hidden then
         if not state then
             state = {}
@@ -4695,10 +4743,10 @@ local function SetBlizzardElementHidden(name, hidden, disableMouse)
             else
                 state.alpha = 1
             end
-            if disableMouse and element.IsMouseEnabled then
-                state.mouseEnabled = element:IsMouseEnabled() and true or false
-            end
-            blizzardElementStates[name] = state
+            blizzardElementStates[element] = state
+        end
+        if disableMouse and state.mouseEnabled == nil and element.IsMouseEnabled then
+            state.mouseEnabled = element:IsMouseEnabled() and true or false
         end
 
         if element.SetAlpha then
@@ -4711,25 +4759,10 @@ local function SetBlizzardElementHidden(name, hidden, disableMouse)
         if element.SetAlpha then
             element:SetAlpha(state.alpha or 1)
         end
-        if disableMouse and state.mouseEnabled ~= nil and element.EnableMouse then
+        if state.mouseEnabled ~= nil and element.EnableMouse then
             element:EnableMouse(state.mouseEnabled)
         end
-        blizzardElementStates[name] = nil
-    end
-end
-
-function DMLCD.PushBlizzardElementBehindDML(name)
-    local element = _G[name]
-    if not element then
-        return
-    end
-
-    if element.SetFrameStrata then
-        pcall(element.SetFrameStrata, element, "LOW")
-    end
-
-    if element.SetFrameLevel then
-        pcall(element.SetFrameLevel, element, 1)
+        blizzardElementStates[element] = nil
     end
 end
 
@@ -4750,49 +4783,33 @@ ApplyBlizzardBarSettings = function()
     local hideActions = mode ~= "SHOW"
     local hideBackground = mode == "ALL" or mode == "ACTION_BACKGROUND"
     local hideGryphons = mode == "ALL" or DB.hideGryphons
+    -- Stances/forms/paladin auras are a separate Blizzard bar. Hide Action Bar
+    -- must not hide it. It is hidden only by Hide All or the DML aura replacement.
+    local hideAuraBar = mode == "ALL" or DB.useDMLAuraBar
 
     local i
     for i = 1, 12 do
         SetBlizzardElementHidden("ActionButton" .. tostring(i), hideActions, true)
         SetBlizzardElementHidden("BonusActionButton" .. tostring(i), hideActions, true)
-        if not hideActions then
-            DMLCD.PushBlizzardElementBehindDML("ActionButton" .. tostring(i))
-            DMLCD.PushBlizzardElementBehindDML("BonusActionButton" .. tostring(i))
-        end
     end
 
+    -- ShapeshiftButton is the stock 3.3.5 stance/form/aura button name. Some
+    -- UI variants also expose StanceButton aliases, so support both without
+    -- changing their frame strata or levels.
     for i = 1, 10 do
-        SetBlizzardElementHidden("ShapeshiftButton" .. tostring(i), hideActions, true)
-        SetBlizzardElementHidden("StanceButton" .. tostring(i), hideActions, true)
-
-        if not hideActions then
-            DMLCD.PushBlizzardElementBehindDML("ShapeshiftButton" .. tostring(i))
-            DMLCD.PushBlizzardElementBehindDML("StanceButton" .. tostring(i))
-        end
+        SetBlizzardElementHidden("ShapeshiftButton" .. tostring(i), hideAuraBar, true)
+        SetBlizzardElementHidden("StanceButton" .. tostring(i), hideAuraBar, true)
     end
 
-    local stanceFrames = {
+    local auraFrames = {
         "ShapeshiftBarFrame",
-        "StanceBarFrame",
-        "PossessBarFrame",
-        "BonusActionBarFrame"
+        "StanceBarFrame"
     }
-
-    for i = 1, #stanceFrames do
-        SetBlizzardElementHidden(stanceFrames[i], hideActions, true)
-        if not hideActions then
-            DMLCD.PushBlizzardElementBehindDML(stanceFrames[i])
-        end
+    for i = 1, #auraFrames do
+        SetBlizzardElementHidden(auraFrames[i], hideAuraBar, true)
     end
 
-    for i = 0, 3 do
-        SetBlizzardElementHidden("BonusActionBarTexture" .. tostring(i), hideActions, false)
-        if not hideActions then
-            DMLCD.PushBlizzardElementBehindDML("BonusActionBarTexture" .. tostring(i))
-        end
-    end
-
-    local shapeshiftArt = {
+    local auraArt = {
         "ShapeshiftBarLeft",
         "ShapeshiftBarMiddle",
         "ShapeshiftBarRight",
@@ -4800,16 +4817,17 @@ ApplyBlizzardBarSettings = function()
         "StanceBarMiddle",
         "StanceBarRight"
     }
-
-    for i = 1, #shapeshiftArt do
-        SetBlizzardElementHidden(shapeshiftArt[i], hideActions, false)
-        if not hideActions then
-            DMLCD.PushBlizzardElementBehindDML(shapeshiftArt[i])
-        end
+    for i = 1, #auraArt do
+        SetBlizzardElementHidden(auraArt[i], hideAuraBar, false)
     end
 
-    -- Both name sets are included because different Wrath UI builds/addons use
-    -- one or the other for the main-bar page controls.
+    -- Bonus action buttons/page artwork belong to the main action bar, not the
+    -- stance/aura bar. Possess/vehicle controls are deliberately not touched.
+    SetBlizzardElementHidden("BonusActionBarFrame", hideActions, true)
+    for i = 0, 3 do
+        SetBlizzardElementHidden("BonusActionBarTexture" .. tostring(i), hideActions, false)
+    end
+
     local pageControls = {
         "MainMenuBarPageNumber",
         "MainMenuBarPageUpButton",
@@ -4819,42 +4837,26 @@ ApplyBlizzardBarSettings = function()
     }
     for i = 1, #pageControls do
         SetBlizzardElementHidden(pageControls[i], hideActions, true)
-        if not hideActions then
-            DMLCD.PushBlizzardElementBehindDML(pageControls[i])
-        end
     end
 
-    -- These four textures are the Blizzard main-menu-bar artwork. Their parent
-    -- remains visible, so XP, bags, and micro-menu frames do not move or hide.
+    -- These are only the main action-bar background textures. In SHOW mode DML
+    -- leaves Blizzard layering untouched so the UI renders exactly as stock WoW.
     for i = 0, 3 do
         SetBlizzardElementHidden("MainMenuBarTexture" .. tostring(i), hideBackground, false)
-        if not hideBackground then
-            DMLCD.PushBlizzardElementBehindDML("MainMenuBarTexture" .. tostring(i))
-        end
     end
 
     SetBlizzardElementHidden("MainMenuBarLeftEndCap", hideGryphons, false)
     SetBlizzardElementHidden("MainMenuBarRightEndCap", hideGryphons, false)
-    if not hideGryphons then
-        DMLCD.PushBlizzardElementBehindDML("MainMenuBarLeftEndCap")
-        DMLCD.PushBlizzardElementBehindDML("MainMenuBarRightEndCap")
-    end
 
-    -- The original pet buttons remain alive as secure right-click proxies for
-    -- autocast toggling, but their visuals and mouse input are removed whenever
-    -- the optional DML pet bar is enabled.
     local hidePetBar = DB.useDMLPetBar and true or false
     for i = 1, 10 do
         SetBlizzardElementHidden("PetActionButton" .. tostring(i), hidePetBar, true)
-        if not hidePetBar then
-            DMLCD.PushBlizzardElementBehindDML("PetActionButton" .. tostring(i))
-        end
     end
     SetBlizzardElementHidden("PetActionBarFrame", hidePetBar, true)
-    if not hidePetBar then
-        DMLCD.PushBlizzardElementBehindDML("PetActionBarFrame")
-    end
 
+    if DMLCD.ApplyAuraBarSettings then
+        DMLCD.ApplyAuraBarSettings()
+    end
     if DMLCD.ApplyPetBarSettings then
         DMLCD.ApplyPetBarSettings()
     end
@@ -4868,6 +4870,385 @@ local function ScheduleBlizzardBarRefresh(delay)
 end
 
 
+
+DMLCD.AURA_ACTION_SLOTS = NUM_SHAPESHIFT_SLOTS or 10
+DMLCD.AURA_BUTTON_SIZE = 30
+DMLCD.AURA_BUTTON_SPACING = 3
+DMLCD.AURA_BAR_PADDING = 5
+
+function DMLCD.GetDefaultAuraBarPosition()
+    return "CENTER", "CENTER", 0, -70
+end
+
+function DMLCD.SaveAuraBarPosition()
+    if not DB or not DMLCD.auraBar then
+        return
+    end
+
+    local point, _, relativePoint, x, y = DMLCD.auraBar:GetPoint(1)
+    DB.auraBarPosition = {
+        point = point or "CENTER",
+        relativePoint = relativePoint or "CENTER",
+        x = x or 0,
+        y = y or -70
+    }
+end
+
+function DMLCD.RestoreAuraBarPosition()
+    if not DB or not DMLCD.auraBar then
+        return
+    end
+
+    local saved = DB.auraBarPosition
+    local point, relativePoint, x, y
+    if type(saved) == "table" then
+        point = saved.point or "CENTER"
+        relativePoint = saved.relativePoint or "CENTER"
+        x = tonumber(saved.x) or 0
+        y = tonumber(saved.y) or -70
+    else
+        point, relativePoint, x, y = DMLCD.GetDefaultAuraBarPosition()
+        DB.auraBarPosition = {
+            point = point,
+            relativePoint = relativePoint,
+            x = x,
+            y = y
+        }
+    end
+
+    DMLCD.auraBar:ClearAllPoints()
+    DMLCD.auraBar:SetPoint(point, UIParent, relativePoint, x, y)
+end
+
+function DMLCD.ConstrainAuraBarToScreen()
+    local frame = DMLCD.auraBar
+    if not frame or not UIParent then
+        return false
+    end
+
+    local left = frame:GetLeft()
+    local bottom = frame:GetBottom()
+    local width = frame:GetWidth()
+    local height = frame:GetHeight()
+    local screenWidth = UIParent:GetWidth()
+    local screenHeight = UIParent:GetHeight()
+    if not left or not bottom or not width or not height or
+        not screenWidth or not screenHeight
+    then
+        return false
+    end
+
+    local right = left + width
+    local top = bottom + height
+    local minimumLeft = -BAR_EDGE_OVERHANG
+    local maximumRight = screenWidth + BAR_EDGE_OVERHANG
+    local minimumBottom = -BAR_EDGE_OVERHANG
+    local maximumTop = screenHeight - BAR_DRAG_HANDLE_HEIGHT - BAR_DRAG_HANDLE_GAP
+    local deltaX = 0
+    local deltaY = 0
+
+    if left < minimumLeft then
+        deltaX = minimumLeft - left
+    elseif right > maximumRight then
+        deltaX = maximumRight - right
+    end
+
+    if bottom < minimumBottom then
+        deltaY = minimumBottom - bottom
+    elseif top > maximumTop then
+        deltaY = maximumTop - top
+    end
+
+    if deltaX == 0 and deltaY == 0 then
+        return false
+    end
+
+    frame:ClearAllPoints()
+    frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left + deltaX, bottom + deltaY)
+    return true
+end
+
+function DMLCD.GetAuraBindingText(slot)
+    if not GetBindingKey then
+        return ""
+    end
+
+    local key = GetBindingKey("SHAPESHIFTBUTTON" .. tostring(slot)) or
+        GetBindingKey("STANCEBUTTON" .. tostring(slot))
+    if DMLCD.CompactBindingText then
+        return DMLCD.CompactBindingText(key)
+    end
+    return key or ""
+end
+
+function DMLCD.UpdateAuraButton(button)
+    if not button or not button.dmlAuraSlot or not GetShapeshiftFormInfo then
+        return
+    end
+
+    local slot = button.dmlAuraSlot
+    local texture, name, isActive, isCastable = GetShapeshiftFormInfo(slot)
+    button.dmlAuraName = name
+
+    if texture then
+        button.icon:SetTexture(texture)
+        button.icon:Show()
+        if isCastable == false then
+            button.icon:SetVertexColor(0.45, 0.45, 0.45)
+        else
+            button.icon:SetVertexColor(1, 1, 1)
+        end
+    else
+        button.icon:SetTexture(nil)
+        button.icon:Hide()
+    end
+
+    if isActive then
+        button.activeBorder:Show()
+    else
+        button.activeBorder:Hide()
+    end
+
+    if button.cooldown and GetShapeshiftFormCooldown and CooldownFrame_SetTimer then
+        local start, duration, enable = GetShapeshiftFormCooldown(slot)
+        if start and duration and enable and start > 0 and duration > 0 and enable > 0 then
+            CooldownFrame_SetTimer(button.cooldown, start, duration, enable)
+            button.cooldown:Show()
+        else
+            button.cooldown:Hide()
+        end
+    elseif button.cooldown then
+        button.cooldown:Hide()
+    end
+
+    button.hotkeyText:SetText(DMLCD.GetAuraBindingText(slot))
+end
+
+function DMLCD.RefreshAuraBar(allowVisibilityChanges)
+    if not DMLCD.auraButtons then
+        return
+    end
+
+    local count = GetNumShapeshiftForms and tonumber(GetNumShapeshiftForms()) or 0
+    count = math.max(0, math.min(DMLCD.AURA_ACTION_SLOTS, count))
+
+    if allowVisibilityChanges and DMLCD.auraBar then
+        local visibleSlots = math.max(1, count)
+        local width = (visibleSlots * DMLCD.AURA_BUTTON_SIZE) +
+            ((visibleSlots - 1) * DMLCD.AURA_BUTTON_SPACING) +
+            (DMLCD.AURA_BAR_PADDING * 2)
+        DMLCD.auraBar:SetWidth(width)
+        DMLCD.auraBar:SetHeight(DMLCD.AURA_BUTTON_SIZE + (DMLCD.AURA_BAR_PADDING * 2))
+    end
+
+    local slot
+    for slot = 1, DMLCD.AURA_ACTION_SLOTS do
+        local button = DMLCD.auraButtons[slot]
+        if button then
+            DMLCD.UpdateAuraButton(button)
+            if allowVisibilityChanges then
+                if slot <= count then
+                    button:Show()
+                else
+                    button:Hide()
+                end
+            end
+        end
+    end
+end
+
+function DMLCD.ShowAuraButtonTooltip(button)
+    if not button then
+        return
+    end
+    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+    GameTooltip:SetText(button.dmlAuraName or ("Stance / aura " .. tostring(button.dmlAuraSlot)))
+    GameTooltip:Show()
+end
+
+function DMLCD.CreateAuraButton(slot, parent)
+    local button = CreateFrame(
+        "Button",
+        "DMLCooldownBarAuraButton" .. tostring(slot),
+        parent,
+        "SecureActionButtonTemplate"
+    )
+    button.dmlAuraSlot = slot
+    button:SetID(slot)
+    button:SetWidth(DMLCD.AURA_BUTTON_SIZE)
+    button:SetHeight(DMLCD.AURA_BUTTON_SIZE)
+    button:SetFrameLevel(parent:GetFrameLevel() + 5)
+    button:EnableMouse(true)
+    button:RegisterForClicks("LeftButtonUp")
+
+    local originalButton = _G["ShapeshiftButton" .. tostring(slot)] or
+        _G["StanceButton" .. tostring(slot)]
+    if originalButton then
+        button:SetAttribute("type", "click")
+        button:SetAttribute("clickbutton", originalButton)
+    end
+
+    button.slot = button:CreateTexture(nil, "OVERLAY")
+    button.slot:SetTexture("Interface\\Buttons\\UI-Quickslot2")
+    button.slot:SetPoint("CENTER", button, "CENTER", 0, 0)
+    button.slot:SetWidth(DMLCD.AURA_BUTTON_SIZE * (64 / 36))
+    button.slot:SetHeight(DMLCD.AURA_BUTTON_SIZE * (64 / 36))
+
+    button.icon = button:CreateTexture(nil, "ARTWORK")
+    button.icon:SetPoint("TOPLEFT", button, "TOPLEFT", 2, -2)
+    button.icon:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+    button.icon:SetTexCoord(0.07, 0.93, 0.07, 0.93)
+
+    button.activeBorder = CreateFrame("Frame", nil, button)
+    button.activeBorder:SetAllPoints(button.icon)
+    button.activeBorder:SetFrameLevel(button:GetFrameLevel() + 3)
+    button.activeBorder:SetBackdrop({
+        edgeFile = "Interface\\Buttons\\WHITE8X8",
+        edgeSize = 2
+    })
+    button.activeBorder:SetBackdropBorderColor(1, 0.92, 0.42, 0.9)
+    button.activeBorder:Hide()
+
+    button.cooldown = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+    button.cooldown:SetAllPoints(button.icon)
+    button.cooldown:SetFrameLevel(button:GetFrameLevel() + 1)
+    button.cooldown:Hide()
+
+    button.hotkeyText = button:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    button.hotkeyText:SetPoint("TOPRIGHT", button, "TOPRIGHT", -1, -1)
+    button.hotkeyText:SetJustifyH("RIGHT")
+    button.hotkeyText:SetTextColor(1, 1, 1)
+
+    button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    button:SetPushedTexture("Interface\\Buttons\\UI-Quickslot-Depress")
+    button:SetScript("OnEnter", function(self)
+        DMLCD.ShowAuraButtonTooltip(self)
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    button:SetScript("PostClick", function()
+        DMLCD.RefreshAuraBar(false)
+    end)
+
+    DMLCD.auraButtons[slot] = button
+    DMLCD.UpdateAuraButton(button)
+    return button
+end
+
+function DMLCD.CreateAuraBar()
+    if DMLCD.auraBar then
+        return DMLCD.auraBar
+    end
+
+    DMLCD.auraButtons = DMLCD.auraButtons or {}
+
+    local frame = CreateFrame("Frame", "DMLCooldownBarAuraFrame", UIParent)
+    frame:SetFrameStrata("HIGH")
+    frame:SetFrameLevel(20)
+    frame:SetMovable(true)
+    frame:SetClampedToScreen(false)
+    frame:EnableMouse(false)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+
+    local handle = CreateFrame("Frame", "DMLCooldownBarAuraDragHandle", frame)
+    handle:SetHeight(BAR_DRAG_HANDLE_HEIGHT)
+    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, BAR_DRAG_HANDLE_GAP)
+    handle:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", 0, BAR_DRAG_HANDLE_GAP)
+    handle:EnableMouse(true)
+    handle:RegisterForDrag("LeftButton")
+    handle:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    handle:SetBackdropColor(0.05, 0.05, 0.05, 0.85)
+    handle:SetBackdropBorderColor(0.3, 0.9, 0.55, 0.9)
+
+    local title = handle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("CENTER", handle, "CENTER", 0, 0)
+    title:SetText("DML Aura Bar - drag to move")
+
+    handle:SetScript("OnDragStart", function()
+        if DB.locked or IsInCombat() then
+            return
+        end
+        frame:StartMoving()
+    end)
+    handle:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        DMLCD.ConstrainAuraBarToScreen()
+        DMLCD.SaveAuraBarPosition()
+        SaveCharacterLayoutSnapshot()
+    end)
+
+    DMLCD.auraBar = frame
+    DMLCD.auraBarHandle = handle
+
+    local slot
+    for slot = 1, DMLCD.AURA_ACTION_SLOTS do
+        local button = DMLCD.CreateAuraButton(slot, frame)
+        button:SetPoint(
+            "LEFT",
+            frame,
+            "LEFT",
+            DMLCD.AURA_BAR_PADDING + ((slot - 1) *
+                (DMLCD.AURA_BUTTON_SIZE + DMLCD.AURA_BUTTON_SPACING)),
+            0
+        )
+    end
+
+    DMLCD.RestoreAuraBarPosition()
+    DMLCD.RefreshAuraBar(true)
+    frame:Hide()
+    return frame
+end
+
+function DMLCD.EnsureAuraBar()
+    if not DMLCD.auraBar then
+        DMLCD.CreateAuraBar()
+    end
+    return DMLCD.auraBar
+end
+
+function DMLCD.ApplyAuraBarSettings()
+    if not DB then
+        return
+    end
+
+    local frame = DMLCD.EnsureAuraBar()
+    if not frame then
+        return
+    end
+
+    local count = GetNumShapeshiftForms and tonumber(GetNumShapeshiftForms()) or 0
+    if IsInCombat() then
+        DMLCD.pendingAuraBarRefresh = true
+        DMLCD.RefreshAuraBar(false)
+        return
+    end
+
+    DMLCD.pendingAuraBarRefresh = false
+    DMLCD.RefreshAuraBar(true)
+    if DB.useDMLAuraBar and count > 0 then
+        frame:Show()
+    else
+        frame:Hide()
+    end
+
+    ApplyBackground()
+    ApplyLockState()
+end
 
 DMLCD.PET_ACTION_SLOTS = NUM_PET_ACTION_SLOTS or 10
 DMLCD.PET_BUTTON_SIZE = 30
@@ -5905,6 +6286,18 @@ local function CreateEditField(parent, key, labelText, x, y, width)
     edit:SetWidth(width or 70)
     edit:SetHeight(20)
     edit:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 150, y + 5)
+    edit:SetFrameLevel(parent:GetFrameLevel() + 20)
+    edit:SetTextColor(1, 1, 1)
+    edit:SetTextInsets(8, 8, 0, 0)
+
+    -- 3.3.5's InputBoxTemplate center texture can fall behind Dialog backdrops.
+    -- Give every numeric field the same reliable fill/layering as Profile name.
+    local fill = edit:CreateTexture(nil, "BACKGROUND")
+    fill:SetPoint("TOPLEFT", edit, "TOPLEFT", 5, -3)
+    fill:SetPoint("BOTTOMRIGHT", edit, "BOTTOMRIGHT", -5, 3)
+    fill:SetTexture(0.04, 0.04, 0.04, 0.95)
+    edit.dmlBackgroundFill = fill
+
     edit:SetAutoFocus(false)
     edit:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
@@ -6465,6 +6858,7 @@ RefreshConfigFields = function()
     configControls.debugMessages:SetChecked(DB.debugMessages and 1 or nil)
     configControls.showMinimapButton:SetChecked(DB.showMinimapButton and 1 or nil)
     configControls.hideGryphons:SetChecked(DB.hideGryphons and 1 or nil)
+    configControls.useDMLAuraBar:SetChecked(DB.useDMLAuraBar and 1 or nil)
     configControls.useDMLPetBar:SetChecked(DB.useDMLPetBar and 1 or nil)
     configControls.useBar1AsStanceBar:SetChecked(DB.useBar1AsStanceBar and 1 or nil)
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
@@ -6532,6 +6926,7 @@ local function ApplyConfigSettings()
     DB.debugMessages = configControls.debugMessages:GetChecked() and true or false
     DB.showMinimapButton = configControls.showMinimapButton:GetChecked() and true or false
     DB.hideGryphons = configControls.hideGryphons:GetChecked() and true or false
+    DB.useDMLAuraBar = configControls.useDMLAuraBar:GetChecked() and true or false
     DB.useDMLPetBar = configControls.useDMLPetBar:GetChecked() and true or false
     DB.useBar1AsStanceBar = configControls.useBar1AsStanceBar:GetChecked() and true or false
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
@@ -6564,6 +6959,12 @@ local function ResetFromConfig()
     CopyDefaults(true)
     pendingFallbacks = {}
     RestoreAllPositions()
+    if DMLCD.RestorePetBarPosition then
+        DMLCD.RestorePetBarPosition()
+    end
+    if DMLCD.RestoreAuraBarPosition then
+        DMLCD.RestoreAuraBarPosition()
+    end
     LayoutButtons()
     SetShown(DB.shown)
     ApplySavedKeybinds()
@@ -6584,17 +6985,24 @@ function DMLCD.ResetBarPositionsFromConfig()
 
     DB.barPositions = {}
     DB.petBarPosition = nil
+    DB.auraBarPosition = nil
     DB.point = defaults.point
     DB.relativePoint = defaults.relativePoint
     DB.x = defaults.x
     DB.y = defaults.y
 
     RestoreAllPositions()
+    if DMLCD.RestorePetBarPosition then
+        DMLCD.RestorePetBarPosition()
+    end
+    if DMLCD.RestoreAuraBarPosition then
+        DMLCD.RestoreAuraBarPosition()
+    end
     SaveAllPositions()
     RefreshConfigFields()
     SaveCharacterLayoutSnapshot()
 
-    Print("DML bar positions, including the pet bar, reset to the center of the screen.")
+    Print("DML bar positions, including the aura and pet bars, reset to the center of the screen.")
 end
 
 local function CreateConfigFrame()
@@ -6645,6 +7053,7 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "showSlotNumbers", "Show slot numbers", 40, -362)
     CreateBlizzardBarDropdown(configFrame, 28, -397)
     CreateCheckField(configFrame, "hideGryphons", "Hide gryphons", 40, -437)
+    CreateCheckField(configFrame, "useDMLAuraBar", "Use DML aura bar", 185, -437)
     CreateCheckField(configFrame, "showAnchors", "Show anchors", 40, -467)
     CreateCheckField(configFrame, "useDMLPetBar", "Use DML pet bar", 185, -467)
     CreateCheckField(configFrame, "simpleTooltips", "Simple tooltips", 40, -497)
@@ -6912,6 +7321,12 @@ local function ApplyProfileSnapshotNow(snapshot, label)
 
     LayoutButtons()
     RestoreAllPositions()
+    if DMLCD.RestorePetBarPosition then
+        DMLCD.RestorePetBarPosition()
+    end
+    if DMLCD.RestoreAuraBarPosition then
+        DMLCD.RestoreAuraBarPosition()
+    end
     SetShown(DB.shown)
     RefreshAllButtons()
     ApplySavedKeybinds()
@@ -7076,7 +7491,7 @@ local function PrintHelp()
     Print("/dmlcd hspacing <0-40> | vspacing <0-40> | background on|off")
     Print("/dmlcd slotnumbers on|off | barlockkey shift|ctrl|alt|none | minimap on|off")
     Print("/dmlcd blizzardbar show|all|action|background | hidegryphons on|off")
-    Print("/dmlcd anchors on|off  (Use DML pet bar is available in Config)")
+    Print("/dmlcd anchors on|off  (DML aura/pet bar options are available in Config)")
     Print("/dmlcd assign <slot> <spellId> [fallbackSeconds]  (bar 1)")
     Print("/dmlcd assignbar <bar> <slot> <spellId> [fallbackSeconds]")
     Print("/dmlcd assignitem <slot> <itemId> | assignitembar <bar> <slot> <itemId>")
@@ -7758,6 +8173,12 @@ local function HandleSlash(message)
         CopyDefaults(true)
         pendingFallbacks = {}
         RestoreAllPositions()
+        if DMLCD.RestorePetBarPosition then
+            DMLCD.RestorePetBarPosition()
+        end
+        if DMLCD.RestoreAuraBarPosition then
+            DMLCD.RestoreAuraBarPosition()
+        end
         LayoutButtons()
         SetShown(DB.shown)
         ApplySavedKeybinds()
@@ -7894,6 +8315,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         if pendingBlizzardBarRefresh then
             ApplyBlizzardBarSettings()
         end
+        if DMLCD.pendingAuraBarRefresh then
+            DMLCD.ApplyAuraBarSettings()
+        end
         if DMLCD.pendingPetBarRefresh then
             DMLCD.ApplyPetBarSettings()
         end
@@ -7915,6 +8339,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
     then
         ScheduleBlizzardBarRefresh(0.05)
         DMLCD.ScheduleBarOneStanceRefresh(0.05)
+        if DMLCD.RefreshAuraBar then
+            DMLCD.RefreshAuraBar(not IsInCombat())
+        end
     elseif event == "PET_BAR_UPDATE" or event == "PET_BAR_UPDATE_COOLDOWN" or
         event == "PET_BAR_SHOWGRID" or event == "PET_BAR_HIDEGRID" or
         event == "ACTIONBAR_UPDATE_STATE" or event == "PLAYER_CONTROL_LOST" or
@@ -7922,6 +8349,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         event == "UPDATE_BINDINGS"
     then
         DMLCD.RefreshPetBar()
+        if DMLCD.RefreshAuraBar then
+            DMLCD.RefreshAuraBar(not IsInCombat())
+        end
         ScheduleBlizzardBarRefresh(0.05)
         if not RegisterStateDriver then
             DMLCD.ApplyPetBarSettings()

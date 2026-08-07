@@ -1,4 +1,4 @@
-DML COOLDOWN BAR 2.0.77
+DML COOLDOWN BAR 2.0.78
 World of Warcraft 3.3.5a / AzerothCore / ALE
 
 PURPOSE
@@ -28,7 +28,7 @@ INSTALLATION
 
    /dmlcd version
 
-It should report version 2.0.77. Existing character settings and legacy character-layout snapshots migrate automatically.
+It should report version 2.0.78. Existing character settings and legacy character-layout snapshots migrate automatically. If a legacy snapshot conflicts with an existing named profile, it is preserved as Name-ac-2, Name-ac-3, and so on.
 
 CONFIGURATION WINDOW
 --------------------
@@ -49,6 +49,7 @@ The left Layout column contains:
 - Blizzard bar dropdown
 - Hide gryphons
 - Show anchors
+- Use DML aura bar
 - Use DML pet bar
 - Simple tooltips
 - Use bar 1 as stance bar
@@ -88,8 +89,13 @@ Commands:
   /dmlcd anchors on
   /dmlcd anchors off
 
-DML PET BAR
------------
+DML AURA / PET BARS
+-------------------
+Use DML aura bar replaces Blizzard's fixed stance/form/aura bar with a compact
+movable DML bar. It mirrors the client's stance/form entries, including warrior
+stances, druid shapeshifts, and paladin auras. Its movement header follows Show
+anchors and Lock bars, and its position is saved in profiles.
+
 Use DML pet bar replaces Blizzard's fixed pet action bar with a compact
 ten-button DML bar. It uses the pet's real action slots, cooldowns, active
 states, usability state, autocast state, tooltips, and existing pet-action
@@ -100,7 +106,7 @@ modifier.
 
 The DML pet bar has its own saved screen position. Its movement header follows
 Show anchors and Lock bars exactly like the normal DML bars. Reset Positions
-recenters it together with Bars 1 through 5. Disabling Use DML pet bar restores
+recenters it together with Bars 1 through 5 and the DML aura bar. Disabling Use DML pet bar restores
 Blizzard's original pet bar.
 
 PROFILES
@@ -134,9 +140,9 @@ profile removes it from both dropdowns. The current character's automatic
 profile is kept synchronized as its DML layout changes. Custom named profiles
 change only when Save Current is used.
 
-Version 2.0.77 migrates the old Character-Realm character-layout snapshot
-table into the normal profile list once, without overwriting an existing named
-profile, and then retires the old parallel list.
+Version 2.0.78 migrates the old Character-Realm character-layout snapshot
+table into the normal profile list once. Existing names are preserved; a conflicting
+legacy snapshot is renamed Name-ac-2, Name-ac-3, and so on before the old list is retired.
 
 Commands:
 
@@ -270,10 +276,15 @@ BLIZZARD BAR OPTIONS
 - Hide all
 - Hide gryphons
 
-Every hidden mode also hides page controls. XP, bags, micro menu, vehicle
-controls, and their positions remain unchanged. Enabling Use DML pet bar hides
-only Blizzard's pet bar and displays the movable DML replacement. Hidden Blizzard buttons retain
-their original keybindings, so clearing the Blizzard bar first is recommended.
+Hide action bar affects only Blizzard's main/bonus action buttons and page controls;
+it does not hide the normal stance/form/aura bar. Hide action bar and background also
+removes the main action-bar artwork. Hide all additionally hides the stance/form/aura
+bar. Show blizz bar leaves Blizzard frame strata and levels untouched so the stock UI
+renders normally. XP, bags, micro menu, possess/vehicle controls, and their positions
+remain unchanged. Enabling Use DML aura bar hides only Blizzard's stance/form/aura bar
+and shows the movable DML replacement. Enabling Use DML pet bar does the same for the
+pet bar. Hidden Blizzard buttons retain their original keybindings, so clearing the
+Blizzard action bar first is recommended.
 
 KEY COMMANDS
 ------------
@@ -304,7 +315,7 @@ SAVED VARIABLES
 DMLCooldownBarDB is per-character and stores the active setup.
 DMLCooldownBarGlobalDB is account-wide and stores the single Saved Profile list.
 
-PROFILE COPYING (2.0.77)
+PROFILE COPYING (2.0.78)
 ------------------------
 The addon automatically creates and maintains a profile for the current
 character using that character's name. The Profile name field is prefilled with

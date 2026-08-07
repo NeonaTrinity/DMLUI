@@ -1,3 +1,13 @@
+DMLCooldownBar 2.0.78
+- Fixed Show blizz bar so Blizzard action buttons/art retain stock 3.3.5 layering instead of being permanently pushed behind their own artwork.
+- Fixed Blizzard hide-state tracking to key by the actual frame object, preventing StanceButton/ShapeshiftButton aliases from restoring shared buttons to alpha 0.
+- Hide action bar now hides only the main/bonus Blizzard action bar and page controls; the stance/form/aura bar remains visible unless Hide all or Use DML aura bar is selected.
+- Added optional Use DML aura bar with compact movable buttons for the client's stance/form/aura entries, including warrior stances, druid forms, and paladin auras.
+- DML aura bar position, background, Show anchors, Lock bars, Reset Positions, profiles, and character copies use the same systems as the other DML bars.
+- Fixed numeric configuration edit boxes so their full center/background and white text render above the dialog backdrop.
+- Legacy character-layout migration now preserves collisions as Name-ac-2, Name-ac-3, etc. before deleting the retired characterLayouts table.
+- Saved Profile and Copy Profile continue to use the same single profile list; Delete removes an entry from both dropdowns.
+
 DMLCooldownBar 2.0.77
 - Unified named profiles and automatic character layouts into one account-wide Saved Profile list.
 - Copy Profile now reads the same list as Saved Profile; Delete removes entries from both views immediately.
