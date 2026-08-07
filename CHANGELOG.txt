@@ -1,3 +1,10 @@
+DMLCooldownBar 2.0.80
+
+- Restored working-profile semantics for Load: loading a saved profile fills the Profile name field with that profile name.
+- Load remains non-destructive and does not save or overwrite any named profile.
+- Copy To This Character imports the selected profile layout without changing Profile name.
+- Deferred profile loads after combat preserve the same Load vs Copy behavior.
+
 DMLCooldownBar 2.0.79
 - Fixed destructive profile loading: Load and Copy To This Character now change only the current character's live DML layout and never write back to any named profile.
 - Named profiles are now true snapshots. The character-name profile is created on first use but changes only when Save Current is explicitly pressed.

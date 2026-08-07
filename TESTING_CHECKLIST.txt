@@ -1,3 +1,11 @@
+2.0.80 PROFILE LOAD/COPY SEMANTICS
+
+[ ] Load Drudru: live bars become Drudru and Profile name becomes Drudru.
+[ ] Without Save Current, Load Jae: Jae still restores its original saved snapshot.
+[ ] Copy To This Character from Drudru while Profile name is Jae: bars become Drudru but Profile name remains Jae.
+[ ] Delete operates on the selected Saved Profile entry.
+[ ] Load requested during combat applies after combat and then fills Profile name.
+
 2.0.79 NON-DESTRUCTIVE PROFILE LOADS
 [ ] Start on Jae with Jae saved, then Load Drudru. Jae's saved snapshot remains byte-for-byte/logically unchanged.
 [ ] Load Drudru, Jbaby, Jaezebelle, then Jbaby again. Every loaded profile restores its own originally saved layout.

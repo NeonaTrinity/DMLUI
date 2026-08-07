@@ -1,4 +1,4 @@
-DML COOLDOWN BAR 2.0.79
+DML COOLDOWN BAR 2.0.80
 World of Warcraft 3.3.5a / AzerothCore / ALE
 
 PURPOSE
@@ -28,7 +28,7 @@ INSTALLATION
 
    /dmlcd version
 
-It should report version 2.0.79. Existing character settings and legacy character-layout snapshots migrate automatically. If a legacy snapshot conflicts with an existing named profile, it is preserved as Name-ac-2, Name-ac-3, and so on.
+It should report version 2.0.80. Existing character settings and legacy character-layout snapshots migrate automatically. If a legacy snapshot conflicts with an existing named profile, it is preserved as Name-ac-2, Name-ac-3, and so on.
 
 CONFIGURATION WINDOW
 --------------------
@@ -316,7 +316,7 @@ SAVED VARIABLES
 DMLCooldownBarDB is per-character and stores the active setup.
 DMLCooldownBarGlobalDB is account-wide and stores the single Saved Profile list.
 
-PROFILE COPYING (2.0.79)
+PROFILE COPYING (2.0.80)
 ------------------------
 The addon creates an initial profile for the current character using that
 character's name. The Profile name field is prefilled with that name. Loading

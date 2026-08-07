@@ -33,7 +33,7 @@ DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
 DMLCD.ITEM_INFO_RETRY_DELAY = 5
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.79"
+local ADDON_VERSION = "2.0.80"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -7114,7 +7114,11 @@ local function CreateConfigFrame()
             Print("Select a saved profile to load.")
             return
         end
-        RequestProfileApply(GetRecordSnapshot(record), "Profile '" .. savedName .. "'")
+        RequestProfileApply(
+            GetRecordSnapshot(record),
+            "Profile '" .. savedName .. "'",
+            savedName
+        )
     end)
 
     local deleteProfile = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
@@ -7284,7 +7288,7 @@ UpdateMinimapButtonVisibility = function()
     end
 end
 
-local function ApplyProfileSnapshotNow(snapshot, label)
+local function ApplyProfileSnapshotNow(snapshot, label, profileNameAfterLoad)
     if type(snapshot) ~= "table" then
         Print("The selected profile does not contain a valid layout.")
         return false
@@ -7326,6 +7330,14 @@ local function ApplyProfileSnapshotNow(snapshot, label)
     end
     RefreshConfigFields()
 
+    -- Loading a saved profile also makes that profile the current working name
+    -- shown in the Profile name field. Copy Profile deliberately does not pass
+    -- this value, so it can import another layout without changing the user's
+    -- current save destination. Neither path writes a saved profile here.
+    if profileNameAfterLoad and configControls.profileName then
+        configControls.profileName:SetText(tostring(profileNameAfterLoad))
+    end
+
     -- Loading/copying a profile changes only this character's live per-character
     -- layout. The source profile and the character's named profile remain
     -- untouched until Save Current is explicitly pressed.
@@ -7336,7 +7348,7 @@ local function ApplyProfileSnapshotNow(snapshot, label)
     return true
 end
 
-RequestProfileApply = function(snapshot, label)
+RequestProfileApply = function(snapshot, label, profileNameAfterLoad)
     if type(snapshot) ~= "table" then
         Print("The selected profile does not contain a valid layout.")
         return false
@@ -7345,13 +7357,14 @@ RequestProfileApply = function(snapshot, label)
     if IsInCombat() then
         pendingProfileApply = {
             data = DeepCopy(snapshot),
-            label = label or "Layout"
+            label = label or "Layout",
+            profileNameAfterLoad = profileNameAfterLoad
         }
         Print((label or "Layout") .. " will load when combat ends.")
         return true
     end
 
-    return ApplyProfileSnapshotNow(snapshot, label)
+    return ApplyProfileSnapshotNow(snapshot, label, profileNameAfterLoad)
 end
 
 local function CreateMinimapButton()
@@ -7577,7 +7590,11 @@ local function HandleSlash(message)
             if not savedName then
                 Print("Profile not found: " .. tostring(value))
             else
-                RequestProfileApply(GetRecordSnapshot(record), "Profile '" .. savedName .. "'")
+                RequestProfileApply(
+                    GetRecordSnapshot(record),
+                    "Profile '" .. savedName .. "'",
+                    savedName
+                )
             end
         elseif action == "delete" then
             DeleteNamedProfile(value)
@@ -8315,7 +8332,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         if pendingProfileApply then
             local queued = pendingProfileApply
             pendingProfileApply = nil
-            ApplyProfileSnapshotNow(queued.data, queued.label)
+            ApplyProfileSnapshotNow(queued.data, queued.label, queued.profileNameAfterLoad)
         end
     elseif event == "PLAYER_REGEN_DISABLED" then
         if keybindMode then
