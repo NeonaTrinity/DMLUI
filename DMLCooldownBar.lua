@@ -33,7 +33,7 @@ DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
 DMLCD.ITEM_INFO_RETRY_DELAY = 5
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.78"
+local ADDON_VERSION = "2.0.79"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -963,22 +963,12 @@ local function GetDefaultProfileName()
     return profileName
 end
 
+-- Current character settings already live in DMLCooldownBarDB, which WoW saves
+-- per character. Named profiles are snapshots and must never be rewritten just
+-- because the live layout changed or another profile was loaded. Keep this
+-- compatibility function as a no-op because older code paths still call it.
 SaveCharacterLayoutSnapshot = function()
-    if not globalDB or not DB then
-        return
-    end
-
-    -- Keep the current character's default named profile synchronized. This
-    -- replaces the retired Character-Realm snapshot table, so automatic
-    -- character profiles and manually saved profiles now share one list.
-    local profileName = GetDefaultProfileName()
-    local characterKey = GetCurrentCharacterIdentity()
-    globalDB.profiles[profileName] = {
-        sourceCharacter = characterKey,
-        savedAt = time and time() or 0,
-        automatic = true,
-        data = BuildLayoutSnapshot()
-    }
+    return
 end
 
 local function EnsureDefaultCharacterProfile()
@@ -988,7 +978,13 @@ local function EnsureDefaultCharacterProfile()
 
     local profileName = GetDefaultProfileName()
     if not globalDB.profiles[profileName] then
-        SaveCharacterLayoutSnapshot()
+        local characterKey = GetCurrentCharacterIdentity()
+        globalDB.profiles[profileName] = {
+            sourceCharacter = characterKey,
+            savedAt = time and time() or 0,
+            automatic = true,
+            data = BuildLayoutSnapshot()
+        }
     end
     return profileName
 end
@@ -1004,7 +1000,6 @@ local function SaveNamedProfile(profileName)
         return false
     end
 
-    SaveCharacterLayoutSnapshot()
     local characterKey = GetCurrentCharacterIdentity()
     local automatic = profileName == GetDefaultProfileName() and true or nil
     globalDB.profiles[profileName] = {
@@ -6717,9 +6712,6 @@ local function CreateNamedProfileDropdown(parent, x, y)
                 info.checked = dropdown.selectedValue == profileName
                 info.func = function()
                     SetNamedProfileDropdownValue(dropdown, profileName)
-                    if configControls.profileName then
-                        configControls.profileName:SetText(profileName)
-                    end
                 end
                 UIDropDownMenu_AddButton(info)
             end
@@ -6788,11 +6780,8 @@ RefreshProfileControls = function(preferredProfile, preferredCopyProfile)
         selected = savedName
         SetNamedProfileDropdownValue(profileDropdown, selected)
 
-        if configControls.profileName then
-            local currentText = TrimText(configControls.profileName:GetText())
-            if preferredProfile or currentText == "" then
-                configControls.profileName:SetText(selected or defaultProfileName or "")
-            end
+        if configControls.profileName and TrimText(configControls.profileName:GetText()) == "" then
+            configControls.profileName:SetText(defaultProfileName or "")
         end
     elseif configControls.profileName and TrimText(configControls.profileName:GetText()) == "" then
         configControls.profileName:SetText(defaultProfileName or "")
@@ -7166,7 +7155,7 @@ local function CreateConfigFrame()
     note:SetPoint("TOP", configFrame, "TOP", 0, -690)
     note:SetJustifyH("LEFT")
     note:SetText(
-        "Profiles save settings, bar positions, assignments, and DML keybinds, but not active cooldown timers. Each character receives an automatically updated profile using its character name. Saved Profile and Copy Profile use the same account-wide list, so any stale or unused entry can be removed with Delete. Hidden Blizzard buttons keep their original keybinds, so clearing the Blizzard bar first is recommended."
+        "Profiles save settings, bar positions, assignments, and DML keybinds, but not active cooldown timers. Each character receives an initial profile using its character name. Loading or copying a profile changes only the live character layout; saved profiles change only when Save Current is pressed. Saved Profile and Copy Profile use the same account-wide list. Hidden Blizzard buttons keep their original keybinds, so clearing the Blizzard bar first is recommended."
     )
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
@@ -7336,9 +7325,11 @@ local function ApplyProfileSnapshotNow(snapshot, label)
         DMLCD.RefreshBagnonIcons()
     end
     RefreshConfigFields()
-    SaveCharacterLayoutSnapshot()
 
-    Print((label or "Layout") .. " loaded for this character.")
+    -- Loading/copying a profile changes only this character's live per-character
+    -- layout. The source profile and the character's named profile remain
+    -- untouched until Save Current is explicitly pressed.
+    Print((label or "Layout") .. " loaded for this character. Use Save Current to overwrite a saved profile.")
     if DB.blizzardBarMode ~= "SHOW" then
         PrintBlizzardBarWarning()
     end

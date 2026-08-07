@@ -1,3 +1,9 @@
+DMLCooldownBar 2.0.79
+- Fixed destructive profile loading: Load and Copy To This Character now change only the current character's live DML layout and never write back to any named profile.
+- Named profiles are now true snapshots. The character-name profile is created on first use but changes only when Save Current is explicitly pressed.
+- Saved Profile selection no longer rewrites the Profile name edit field, preventing an accidental Save Current from targeting the profile that was merely selected for loading.
+- Preserved the unified Saved Profile / Copy Profile list and 2.0.78 Name-ac-N legacy migration behavior.
+
 DMLCooldownBar 2.0.78
 - Fixed Show blizz bar so Blizzard action buttons/art retain stock 3.3.5 layering instead of being permanently pushed behind their own artwork.
 - Fixed Blizzard hide-state tracking to key by the actual frame object, preventing StanceButton/ShapeshiftButton aliases from restoring shared buttons to alpha 0.

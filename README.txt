@@ -1,4 +1,4 @@
-DML COOLDOWN BAR 2.0.78
+DML COOLDOWN BAR 2.0.79
 World of Warcraft 3.3.5a / AzerothCore / ALE
 
 PURPOSE
@@ -28,7 +28,7 @@ INSTALLATION
 
    /dmlcd version
 
-It should report version 2.0.78. Existing character settings and legacy character-layout snapshots migrate automatically. If a legacy snapshot conflicts with an existing named profile, it is preserved as Name-ac-2, Name-ac-3, and so on.
+It should report version 2.0.79. Existing character settings and legacy character-layout snapshots migrate automatically. If a legacy snapshot conflicts with an existing named profile, it is preserved as Name-ac-2, Name-ac-3, and so on.
 
 CONFIGURATION WINDOW
 --------------------
@@ -112,9 +112,10 @@ Blizzard's original pet bar.
 PROFILES
 --------
 DML uses one account-wide Saved Profile list while every character still keeps
-its own active DML setup. Each character automatically maintains a profile
-using its character name. Players may also create manual profiles such as
-Healer, Tank, PvP, or Raid.
+its own active DML setup in the normal per-character SavedVariables. On first
+use, DML creates a named profile using the character name. Named profiles are
+snapshots: they change only when Save Current is explicitly pressed. Players
+may also create manual profiles such as Healer, Tank, PvP, or Raid.
 
 A profile saves:
 - Bar count, button count, rows, and columns
@@ -136,9 +137,9 @@ The Profiles section in /dmlcd config provides:
 - Copy To This Character
 
 Saved Profile and Copy Profile display the same account-wide list. Deleting a
-profile removes it from both dropdowns. The current character's automatic
-profile is kept synchronized as its DML layout changes. Custom named profiles
-change only when Save Current is used.
+profile removes it from both dropdowns. Loading or copying a profile changes
+only the current character's live layout and never rewrites any saved profile.
+A saved profile changes only when Save Current is used.
 
 Version 2.0.78 migrates the old Character-Realm character-layout snapshot
 table into the normal profile list once. Existing names are preserved; a conflicting
@@ -315,11 +316,11 @@ SAVED VARIABLES
 DMLCooldownBarDB is per-character and stores the active setup.
 DMLCooldownBarGlobalDB is account-wide and stores the single Saved Profile list.
 
-PROFILE COPYING (2.0.78)
+PROFILE COPYING (2.0.79)
 ------------------------
-The addon automatically creates and maintains a profile for the current
-character using that character's name. The Profile name field is prefilled with
-that name.
+The addon creates an initial profile for the current character using that
+character's name. The Profile name field is prefilled with that name. Loading
+other profiles does not change this save target or overwrite any saved profile.
 
 To copy a layout to another character:
 1. Log into the source character with DML Cooldown Bar enabled and arrange its layout.
@@ -328,11 +329,12 @@ To copy a layout to another character:
 4. Choose the source character profile (or any custom profile) under Copy profile.
 5. Click Copy To This Character.
 
-The source profile is never changed. The destination receives the copied
-settings, bar positions, assignments, fallback values, and DML keybinds. Active
-cooldown timers are not copied. Saved Profile and Copy Profile use the same
-list, so stale or unused character profiles can be removed with the normal
-Delete button.
+The source profile is never changed. The destination character's live setup
+receives the copied settings, bar positions, assignments, fallback values, and
+DML keybinds. No named profile is overwritten until Save Current is explicitly
+pressed. Active cooldown timers are not copied. Saved Profile and Copy Profile
+use the same list, so stale or unused character profiles can be removed with
+the normal Delete button.
 
 
 Bagnon compatibility

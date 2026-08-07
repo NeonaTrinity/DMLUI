@@ -1,3 +1,11 @@
+2.0.79 NON-DESTRUCTIVE PROFILE LOADS
+[ ] Start on Jae with Jae saved, then Load Drudru. Jae's saved snapshot remains byte-for-byte/logically unchanged.
+[ ] Load Drudru, Jbaby, Jaezebelle, then Jbaby again. Every loaded profile restores its own originally saved layout.
+[ ] Selecting a Saved Profile does not replace the Profile name field; it remains the explicit Save Current destination.
+[ ] Copy To This Character applies the selected profile to the live character without changing the source profile or the character-name profile.
+[ ] Save Current is the only normal UI action that overwrites/creates a named profile.
+[ ] Loading/copying during combat applies after combat and still does not save any profile.
+
 
 2.0.78 BLIZZARD / AURA BAR / PROFILE MIGRATION
 [ ] Show blizz bar displays the stock WoW main action bar, background, page controls, and stance/aura bar exactly normally when DML aura/pet replacements are off.
