@@ -33,7 +33,7 @@ DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
 DMLCD.ITEM_INFO_RETRY_DELAY = 5
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.76"
+local ADDON_VERSION = "2.0.77"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -811,13 +811,48 @@ local function InitializeGlobalDB()
     end
 
     globalDB = DMLCooldownBarGlobalDB
-    globalDB.version = 1
     if type(globalDB.profiles) ~= "table" then
         globalDB.profiles = {}
     end
-    if type(globalDB.characterLayouts) ~= "table" then
-        globalDB.characterLayouts = {}
+
+    -- v2.0.77 unifies the old automatic character-layout snapshots with the
+    -- named profile system. Existing named profiles always win. Legacy
+    -- character layouts are migrated once into the same deletable profile list
+    -- and the parallel characterLayouts table is then retired.
+    if type(globalDB.characterLayouts) == "table" then
+        local migratedNames = {}
+        local characterKey, record
+        for characterKey, record in pairs(globalDB.characterLayouts) do
+            if type(record) == "table" then
+                local characterName = TrimText(record.character)
+                if characterName == "" then
+                    characterName = string.match(tostring(characterKey), "^(.-)%-[^%-]+$") or tostring(characterKey)
+                end
+
+                local targetName = characterName
+                if globalDB.profiles[targetName] then
+                    if migratedNames[targetName] and not globalDB.profiles[tostring(characterKey)] then
+                        targetName = tostring(characterKey)
+                    else
+                        targetName = nil
+                    end
+                end
+
+                if targetName and not globalDB.profiles[targetName] then
+                    globalDB.profiles[targetName] = {
+                        sourceCharacter = tostring(characterKey),
+                        savedAt = tonumber(record.savedAt) or 0,
+                        automatic = true,
+                        data = DeepCopy(type(record.data) == "table" and record.data or record)
+                    }
+                    migratedNames[targetName] = true
+                end
+            end
+        end
     end
+
+    globalDB.characterLayouts = nil
+    globalDB.version = 2
 end
 
 local function GetCurrentCharacterIdentity()
@@ -853,20 +888,6 @@ local function BuildLayoutSnapshot()
     return snapshot
 end
 
-SaveCharacterLayoutSnapshot = function()
-    if not globalDB then
-        return
-    end
-
-    local key, characterName, realmName = GetCurrentCharacterIdentity()
-    globalDB.characterLayouts[key] = {
-        character = characterName,
-        realm = realmName,
-        savedAt = time and time() or 0,
-        data = BuildLayoutSnapshot()
-    }
-end
-
 local function GetSortedProfileNames()
     local names = {}
     if globalDB and globalDB.profiles then
@@ -879,23 +900,6 @@ local function GetSortedProfileNames()
         return string.lower(left) < string.lower(right)
     end)
     return names
-end
-
-local function GetSortedCharacterKeys(excludeCurrent)
-    local keys = {}
-    local currentKey = excludeCurrent and GetCurrentCharacterIdentity() or nil
-    if globalDB and globalDB.characterLayouts then
-        local key
-        for key in pairs(globalDB.characterLayouts) do
-            if not excludeCurrent or tostring(key) ~= tostring(currentKey) then
-                table.insert(keys, tostring(key))
-            end
-        end
-    end
-    table.sort(keys, function(left, right)
-        return string.lower(left) < string.lower(right)
-    end)
-    return keys
 end
 
 local function FindNamedProfile(profileName)
@@ -918,26 +922,6 @@ local function FindNamedProfile(profileName)
     return nil, nil
 end
 
-local function FindCharacterLayout(characterKey)
-    characterKey = TrimText(characterKey)
-    if characterKey == "" or not globalDB then
-        return nil, nil
-    end
-
-    if globalDB.characterLayouts[characterKey] then
-        return characterKey, globalDB.characterLayouts[characterKey]
-    end
-
-    local lowerKey = string.lower(characterKey)
-    local savedKey, record
-    for savedKey, record in pairs(globalDB.characterLayouts) do
-        if string.lower(tostring(savedKey)) == lowerKey then
-            return savedKey, record
-        end
-    end
-    return nil, nil
-end
-
 local function GetDefaultProfileName()
     local characterKey, characterName = GetCurrentCharacterIdentity()
     local profileName = characterName
@@ -955,20 +939,32 @@ local function GetDefaultProfileName()
     return profileName
 end
 
+SaveCharacterLayoutSnapshot = function()
+    if not globalDB or not DB then
+        return
+    end
+
+    -- Keep the current character's default named profile synchronized. This
+    -- replaces the retired Character-Realm snapshot table, so automatic
+    -- character profiles and manually saved profiles now share one list.
+    local profileName = GetDefaultProfileName()
+    local characterKey = GetCurrentCharacterIdentity()
+    globalDB.profiles[profileName] = {
+        sourceCharacter = characterKey,
+        savedAt = time and time() or 0,
+        automatic = true,
+        data = BuildLayoutSnapshot()
+    }
+end
+
 local function EnsureDefaultCharacterProfile()
     if not globalDB or not DB then
         return nil
     end
 
     local profileName = GetDefaultProfileName()
-    local characterKey = GetCurrentCharacterIdentity()
     if not globalDB.profiles[profileName] then
-        globalDB.profiles[profileName] = {
-            sourceCharacter = characterKey,
-            savedAt = time and time() or 0,
-            automatic = true,
-            data = BuildLayoutSnapshot()
-        }
+        SaveCharacterLayoutSnapshot()
     end
     return profileName
 end
@@ -986,9 +982,11 @@ local function SaveNamedProfile(profileName)
 
     SaveCharacterLayoutSnapshot()
     local characterKey = GetCurrentCharacterIdentity()
+    local automatic = profileName == GetDefaultProfileName() and true or nil
     globalDB.profiles[profileName] = {
         sourceCharacter = characterKey,
         savedAt = time and time() or 0,
+        automatic = automatic,
         data = BuildLayoutSnapshot()
     }
     Print("Profile '" .. profileName .. "' saved.")
@@ -1006,6 +1004,12 @@ local function DeleteNamedProfile(profileName)
     end
 
     globalDB.profiles[savedName] = nil
+    if configControls.profileName then
+        local currentText = TrimText(configControls.profileName:GetText())
+        if string.lower(currentText) == string.lower(tostring(savedName)) then
+            configControls.profileName:SetText(GetDefaultProfileName() or "")
+        end
+    end
     Print("Profile '" .. savedName .. "' deleted.")
     if RefreshProfileControls then
         RefreshProfileControls(nil, nil)
@@ -6332,21 +6336,21 @@ local function CreateNamedProfileDropdown(parent, x, y)
     return dropdown
 end
 
-local function SetCharacterDropdownValue(dropdown, value)
+local function SetCopyProfileDropdownValue(dropdown, value)
     dropdown.selectedValue = value
     if UIDropDownMenu_SetSelectedValue then
         UIDropDownMenu_SetSelectedValue(dropdown, value)
     end
     if UIDropDownMenu_SetText then
-        UIDropDownMenu_SetText(dropdown, value or "Select character")
+        UIDropDownMenu_SetText(dropdown, value or "Select profile")
     end
 end
 
-local function CreateCharacterDropdown(parent, x, y)
-    CreateLabel(parent, "Copy character", x, y)
+local function CreateCopyProfileDropdown(parent, x, y)
+    CreateLabel(parent, "Copy profile", x, y)
     local dropdown = CreateFrame(
         "Frame",
-        "DMLCooldownBarCharacterDropdown",
+        "DMLCooldownBarCopyProfileDropdown",
         parent,
         "UIDropDownMenuTemplate"
     )
@@ -6356,26 +6360,26 @@ local function CreateCharacterDropdown(parent, x, y)
     end
     if UIDropDownMenu_Initialize then
         UIDropDownMenu_Initialize(dropdown, function()
-            local keys = GetSortedCharacterKeys(true)
+            local names = GetSortedProfileNames()
             local i
-            for i = 1, #keys do
-                local characterKey = keys[i]
+            for i = 1, #names do
+                local profileName = names[i]
                 local info = UIDropDownMenu_CreateInfo()
-                info.text = characterKey
-                info.value = characterKey
-                info.checked = dropdown.selectedValue == characterKey
+                info.text = profileName
+                info.value = profileName
+                info.checked = dropdown.selectedValue == profileName
                 info.func = function()
-                    SetCharacterDropdownValue(dropdown, characterKey)
+                    SetCopyProfileDropdownValue(dropdown, profileName)
                 end
                 UIDropDownMenu_AddButton(info)
             end
         end)
     end
-    configControls.characterDropdown = dropdown
+    configControls.copyProfileDropdown = dropdown
     return dropdown
 end
 
-RefreshProfileControls = function(preferredProfile, preferredCharacter)
+RefreshProfileControls = function(preferredProfile, preferredCopyProfile)
     if not configFrame or not globalDB then
         return
     end
@@ -6401,35 +6405,30 @@ RefreshProfileControls = function(preferredProfile, preferredCharacter)
         configControls.profileName:SetText(defaultProfileName or "")
     end
 
-    local characterDropdown = configControls.characterDropdown
-    if characterDropdown then
-        local currentKey = GetCurrentCharacterIdentity()
-        local keys = GetSortedCharacterKeys(true)
-        local selected = preferredCharacter or characterDropdown.selectedValue
-        local savedKey = selected and FindCharacterLayout(selected) or nil
-        if savedKey and tostring(savedKey) ~= tostring(currentKey) then
-            selected = savedKey
-        else
-            selected = keys[1]
-        end
+    local copyDropdown = configControls.copyProfileDropdown
+    if copyDropdown then
+        local names = GetSortedProfileNames()
+        local selected = preferredCopyProfile or copyDropdown.selectedValue
+        local savedName = selected and FindNamedProfile(selected) or nil
+        selected = savedName or names[1]
 
         if selected then
-            SetCharacterDropdownValue(characterDropdown, selected)
+            SetCopyProfileDropdownValue(copyDropdown, selected)
         else
-            characterDropdown.selectedValue = nil
+            copyDropdown.selectedValue = nil
             if UIDropDownMenu_SetSelectedValue then
-                UIDropDownMenu_SetSelectedValue(characterDropdown, nil)
+                UIDropDownMenu_SetSelectedValue(copyDropdown, nil)
             end
             if UIDropDownMenu_SetText then
-                UIDropDownMenu_SetText(characterDropdown, "No other characters")
+                UIDropDownMenu_SetText(copyDropdown, "No saved profiles")
             end
         end
 
-        if configControls.copyCharacterButton then
+        if configControls.copyProfileButton then
             if selected then
-                configControls.copyCharacterButton:Enable()
+                configControls.copyProfileButton:Enable()
             else
-                configControls.copyCharacterButton:Disable()
+                configControls.copyProfileButton:Disable()
             end
         end
     end
@@ -6730,32 +6729,27 @@ local function CreateConfigFrame()
         DeleteNamedProfile(selected or configControls.profileName:GetText())
     end)
 
-    CreateCharacterDropdown(configFrame, 375, -600)
-    local copyCharacter = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
-    copyCharacter:SetWidth(155)
-    copyCharacter:SetHeight(23)
-    copyCharacter:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 475, -630)
-    copyCharacter:SetText("Copy To This Character")
-    configControls.copyCharacterButton = copyCharacter
-    copyCharacter:SetScript("OnClick", function()
-        local selected = configControls.characterDropdown.selectedValue
-        local currentKey = GetCurrentCharacterIdentity()
-        local savedKey, record = FindCharacterLayout(selected)
-        if not savedKey then
-            Print("No other saved character layout is available to copy.")
-            return
-        end
-        if tostring(savedKey) == tostring(currentKey) then
-            Print("Choose a different character layout to copy.")
+    CreateCopyProfileDropdown(configFrame, 375, -600)
+    local copyProfile = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
+    copyProfile:SetWidth(155)
+    copyProfile:SetHeight(23)
+    copyProfile:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 475, -630)
+    copyProfile:SetText("Copy To This Character")
+    configControls.copyProfileButton = copyProfile
+    copyProfile:SetScript("OnClick", function()
+        local selected = configControls.copyProfileDropdown.selectedValue
+        local savedName, record = FindNamedProfile(selected)
+        if not savedName then
+            Print("Select a saved profile to copy.")
             return
         end
 
         local snapshot = GetRecordSnapshot(record)
         if not snapshot then
-            Print("The selected character layout is empty or invalid.")
+            Print("The selected profile is empty or invalid.")
             return
         end
-        RequestProfileApply(snapshot, "Character layout from '" .. savedKey .. "'")
+        RequestProfileApply(snapshot, "Profile '" .. savedName .. "'")
     end)
 
     local note = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -6763,7 +6757,7 @@ local function CreateConfigFrame()
     note:SetPoint("TOP", configFrame, "TOP", 0, -690)
     note:SetJustifyH("LEFT")
     note:SetText(
-        "Profiles save settings, bar positions, assignments, and DML keybinds, but not active cooldown timers. The current character receives a default named profile automatically. Copy Character lists other characters after they have loaded this addon and saved a snapshot. Hidden Blizzard buttons keep their original keybinds, so clearing the Blizzard bar first is recommended."
+        "Profiles save settings, bar positions, assignments, and DML keybinds, but not active cooldown timers. Each character receives an automatically updated profile using its character name. Saved Profile and Copy Profile use the same account-wide list, so any stale or unused entry can be removed with Delete. Hidden Blizzard buttons keep their original keybinds, so clearing the Blizzard bar first is recommended."
     )
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
@@ -7093,7 +7087,7 @@ local function PrintHelp()
     Print("/dmlcd fallbackdelay <0-5>")
     Print("/dmlcd kb | keybind | kb save | kb cancel")
     Print("/dmlcd profile save|load|delete <name> | profile list")
-    Print("/dmlcd profile copy <Character-Realm> | profile characters")
+    Print("/dmlcd profile copy <name>")
     Print("/dmlcd testlearn <spellId> | testmeta <spellId> <rank> [custom text]")
     Print("/dmlcd teststart <spellId> <seconds> [token]")
     Print("/dmlcd testready <spellId> [token] | status | reset")
@@ -7189,23 +7183,22 @@ local function HandleSlash(message)
                 Print("Saved profiles: " .. table.concat(names, ", "))
             end
         elseif action == "characters" or action == "chars" then
-            SaveCharacterLayoutSnapshot()
-            local keys = GetSortedCharacterKeys()
-            if #keys == 0 then
-                Print("No character layouts are available yet.")
+            local names = GetSortedProfileNames()
+            if #names == 0 then
+                Print("No saved profiles are available yet.")
             else
-                Print("Character layouts: " .. table.concat(keys, ", "))
+                Print("Character layouts are unified with saved profiles: " .. table.concat(names, ", "))
             end
         elseif action == "copy" then
-            local savedKey, record = FindCharacterLayout(value)
-            if not savedKey then
-                Print("Character layout not found: " .. tostring(value))
+            local savedName, record = FindNamedProfile(value)
+            if not savedName then
+                Print("Profile not found: " .. tostring(value))
             else
-                RequestProfileApply(GetRecordSnapshot(record), "Character layout '" .. savedKey .. "'")
+                RequestProfileApply(GetRecordSnapshot(record), "Profile '" .. savedName .. "'")
             end
         else
-            Print("Usage: /dmlcd profile save|load|delete <name>")
-            Print("       /dmlcd profile list|characters|copy <Character-Realm>")
+            Print("Usage: /dmlcd profile save|load|delete|copy <name>")
+            Print("       /dmlcd profile list")
         end
         return
     elseif command == "kb" or command == "keybind" then

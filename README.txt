@@ -1,4 +1,4 @@
-DML COOLDOWN BAR 2.0.76
+DML COOLDOWN BAR 2.0.77
 World of Warcraft 3.3.5a / AzerothCore / ALE
 
 PURPOSE
@@ -28,7 +28,7 @@ INSTALLATION
 
    /dmlcd version
 
-It should report version 2.0.76. Existing character settings migrate automatically.
+It should report version 2.0.77. Existing character settings and legacy character-layout snapshots migrate automatically.
 
 CONFIGURATION WINDOW
 --------------------
@@ -103,12 +103,14 @@ Show anchors and Lock bars exactly like the normal DML bars. Reset Positions
 recenters it together with Bars 1 through 5. Disabling Use DML pet bar restores
 Blizzard's original pet bar.
 
-PROFILES AND CHARACTER LAYOUTS
-------------------------------
-Version 1.6.0 adds account-wide profile storage while every character still
-keeps its own active DML setup.
+PROFILES
+--------
+DML uses one account-wide Saved Profile list while every character still keeps
+its own active DML setup. Each character automatically maintains a profile
+using its character name. Players may also create manual profiles such as
+Healer, Tank, PvP, or Raid.
 
-A named profile saves:
+A profile saves:
 - Bar count, button count, rows, and columns
 - Button size and horizontal/vertical gaps
 - Bar positions, pet-bar position and enable state, visibility, background, lock, and anchor-visibility settings
@@ -124,25 +126,27 @@ The Profiles section in /dmlcd config provides:
 - Save Current
 - Saved-profile dropdown
 - Load and Delete
-- Copy-character dropdown
+- Copy-profile dropdown
 - Copy To This Character
 
-Each character automatically writes an account-wide layout snapshot after it
-loads this addon and when it logs out. A character will appear in the copy list
-after that character has logged in with DML Cooldown Bar 1.6.1 or newer.
-Copying does not modify the source character.
+Saved Profile and Copy Profile display the same account-wide list. Deleting a
+profile removes it from both dropdowns. The current character's automatic
+profile is kept synchronized as its DML layout changes. Custom named profiles
+change only when Save Current is used.
+
+Version 2.0.77 migrates the old Character-Realm character-layout snapshot
+table into the normal profile list once, without overwriting an existing named
+profile, and then retires the old parallel list.
 
 Commands:
 
   /dmlcd profile save My Layout
   /dmlcd profile load My Layout
   /dmlcd profile delete My Layout
+  /dmlcd profile copy My Layout
   /dmlcd profile list
-  /dmlcd profile characters
-  /dmlcd profile copy Character-Realm
 
-Profile loading or character copying during combat is queued and applied when
-combat ends.
+Profile loading or copying during combat is queued and applied when combat ends.
 
 
 AUTO-ASSIGN ON LEARN
@@ -291,31 +295,34 @@ KEY COMMANDS
   /dmlcd hidegryphons on|off
   /dmlcd anchors on|off
   /dmlcd profile save|load|delete <name>
-  /dmlcd profile list|characters|copy <Character-Realm>
+  /dmlcd profile copy <name>
+  /dmlcd profile list
   /dmlcd reset
 
 SAVED VARIABLES
 ---------------
 DMLCooldownBarDB is per-character and stores the active setup.
-DMLCooldownBarGlobalDB is account-wide and stores named profiles plus the
-character-layout copy list.
+DMLCooldownBarGlobalDB is account-wide and stores the single Saved Profile list.
 
-PROFILE AND CHARACTER COPYING (1.6.1)
--------------------------------------
-The addon automatically creates and selects a named profile for the current
-character. The Profile name field is prefilled with that character name.
+PROFILE COPYING (2.0.77)
+------------------------
+The addon automatically creates and maintains a profile for the current
+character using that character's name. The Profile name field is prefilled with
+that name.
 
-To copy another character:
-1. Log into the source character with DML Cooldown Bar enabled.
-2. Arrange/apply its bars, assignments, and keybinds, then log out or /reload.
-3. Log into the destination character.
-4. Open /dmlcd config.
-5. Choose the source under Copy character and click Copy To This Character.
+To copy a layout to another character:
+1. Log into the source character with DML Cooldown Bar enabled and arrange its layout.
+2. Log into the destination character.
+3. Open /dmlcd config.
+4. Choose the source character profile (or any custom profile) under Copy profile.
+5. Click Copy To This Character.
 
-The source character is never changed. The destination receives the copied
+The source profile is never changed. The destination receives the copied
 settings, bar positions, assignments, fallback values, and DML keybinds. Active
-cooldown timers are not copied. The current character is intentionally omitted
-from the Copy character list.
+cooldown timers are not copied. Saved Profile and Copy Profile use the same
+list, so stale or unused character profiles can be removed with the normal
+Delete button.
+
 
 Bagnon compatibility
 ---------------------
@@ -468,7 +475,7 @@ The Behavior column includes a Range finder dropdown:
   fades to 35 percent opacity.
 
 Actions that expose no range result remain neutral rather than being marked
-out of range. The selected mode is saved with character layouts and profiles.
+out of range. The selected mode is saved with the current character profile and named profiles.
 
 
 Version 1.9.0 per-bar layout
@@ -476,14 +483,14 @@ Version 1.9.0 per-bar layout
 The config window has a Number of bars dropdown and a Bar settings dropdown.
 Select a bar, edit its button count, rows, columns, button size, and gaps, then
 switch to another bar. Each draft is retained until Apply and is saved in the
-current character layout and named profiles.
+current character profile and named profiles.
 
 MACROS
 ------
 Drag a global or character macro from Blizzard's macro window onto any normal
 DML bar slot. DML stores the macro name, icon, and body with the assignment, so
-named profiles and character layouts remain usable after copying SavedVariables
-to another computer even when macro indices differ. Clicking the button or using
+saved profiles remain usable after copying SavedVariables to another computer
+even when macro indices differ. Clicking the button or using
 its DML keybind executes the saved body through a secure macro action. Macros
 can be moved, swapped, cleared, and assigned separately on Bar 1 stance pages.
 When a matching live macro exists, UPDATE_MACROS refreshes the DML assignment
@@ -494,14 +501,13 @@ MOUNTS AND NON-COMBAT COMPANION PETS
 Drag a mount or companion pet from the Companion tab onto any normal DML bar
 slot. The assignment can be clicked or keybound like a spell or item. The
 separate optional DML pet bar remains dedicated to combat-pet commands and
-abilities. Mount and companion-pet assignments are included in saved profiles,
-character layouts, stance pages, and normal drag/swap behavior.
+abilities. Mount and companion-pet assignments are included in saved profiles, stance
+pages, and normal drag/swap behavior.
 
 TRANSFERRING DML SETTINGS TO ANOTHER COMPUTER
 ----------------------------------------------
-DMLCooldownBarGlobalDB is account-wide and contains named profiles plus saved
-character-layout snapshots. DMLCooldownBarDB is per-character and contains the
-character's live layout. With WoW fully closed, copy both DMLCooldownBar.lua
+DMLCooldownBarGlobalDB is account-wide and contains the unified Saved Profile
+list. DMLCooldownBarDB is per-character and contains the character's live layout. With WoW fully closed, copy both DMLCooldownBar.lua
 SavedVariables files from the old computer to the matching account, realm, and
 character folders on the new computer. Copying the entire WTF folder also
 transfers these settings, but includes settings for every addon and character.

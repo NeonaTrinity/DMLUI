@@ -1,3 +1,9 @@
+DMLCooldownBar 2.0.77
+- Unified named profiles and automatic character layouts into one account-wide Saved Profile list.
+- Copy Profile now reads the same list as Saved Profile; Delete removes entries from both views immediately.
+- Migrates legacy Character-Realm snapshots once, preserving existing named profiles, then retires characterLayouts.
+- Current character profile is automatically synchronized under the character name.
+
 DML Cooldown Bar 2.0.76
 =======================
 
