@@ -1,3 +1,9 @@
+DML Cooldown Bar 2.0.81
+
+- Removed DML/Bagnon compatibility completely to isolate DML item handling from bag-addon item-info and tooltip paths.
+- Removed the Bagnon optional dependency, icon hook file, compatibility checkbox, slash command, refresh calls, and saved compatibility setting.
+- DMLCustomItems.lua icon overrides now affect DML buttons only. Bagnon or other bag addons are never hooked or modified by DML.
+
 DMLCooldownBar 2.0.80
 
 - Restored working-profile semantics for Load: loading a saved profile fills the Profile name field with that profile name.

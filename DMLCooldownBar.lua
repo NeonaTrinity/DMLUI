@@ -24,7 +24,7 @@ DMLCD.scalingBonusDamage = {}
 DMLCD.scalingManaCost = {}
 
 -- Item information is session-cached so assigned consumables do not repeatedly
--- re-query the 3.3.5 client item cache during BAG_UPDATE and Bagnon refreshes.
+-- re-query the 3.3.5 client item cache during BAG_UPDATE refreshes.
 -- Failed lookups use a short retry delay instead of immediately requesting the
 -- same item again on every bag event.
 DMLCD.itemInfoCache = DMLCD.itemInfoCache or {}
@@ -33,7 +33,7 @@ DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
 DMLCD.ITEM_INFO_RETRY_DELAY = 5
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.80"
+local ADDON_VERSION = "2.0.81"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -60,15 +60,6 @@ function DMLCD.GetCustomSpellDefinitions()
     return {}
 end
 
-function DMLCD:IsBagnonCompatibilityEnabled()
-    if DB then
-        return DB.bagnonCompatibility ~= false
-    end
-    if type(DMLCooldownBarDB) == "table" then
-        return DMLCooldownBarDB.bagnonCompatibility ~= false
-    end
-    return true
-end
 local MAX_BUTTONS = 48
 local MAX_BARS = 5
 local MAX_TOTAL_BUTTONS = MAX_BUTTONS * MAX_BARS
@@ -102,7 +93,6 @@ local defaults = {
     resourceFade = true,
     rangeFinder = "OFF",
     simpleTooltips = false,
-    bagnonCompatibility = true,
     showMessages = false,
     showReadyMessages = false,
     debugMessages = false,
@@ -655,7 +645,7 @@ local function CopyDefaults(reset)
     end
 
     DB.showMessages = DB.showMessages and true or false
-    DB.bagnonCompatibility = DB.bagnonCompatibility ~= false
+    DB.bagnonCompatibility = nil
     DB.showReadyMessages = DB.showReadyMessages and true or false
     DB.debugMessages = DB.debugMessages and true or false
     DB.hideGryphons = DB.hideGryphons and true or false
@@ -6841,7 +6831,6 @@ RefreshConfigFields = function()
     configControls.resourceFade:SetChecked(DB.resourceFade and 1 or nil)
     DMLCD.SetRangeFinderDropdownValue(configControls.rangeFinder, DB.rangeFinder)
     configControls.simpleTooltips:SetChecked(DB.simpleTooltips and 1 or nil)
-    configControls.bagnonCompatibility:SetChecked(DB.bagnonCompatibility and 1 or nil)
     configControls.showMessages:SetChecked(DB.showMessages and 1 or nil)
     configControls.showReadyMessages:SetChecked(DB.showReadyMessages and 1 or nil)
     configControls.debugMessages:SetChecked(DB.debugMessages and 1 or nil)
@@ -6909,7 +6898,6 @@ local function ApplyConfigSettings()
         configControls.rangeFinder.selectedValue or DB.rangeFinder
     )
     DB.simpleTooltips = configControls.simpleTooltips:GetChecked() and true or false
-    DB.bagnonCompatibility = configControls.bagnonCompatibility:GetChecked() and true or false
     DB.showMessages = configControls.showMessages:GetChecked() and true or false
     DB.showReadyMessages = configControls.showReadyMessages:GetChecked() and true or false
     DB.debugMessages = configControls.debugMessages:GetChecked() and true or false
@@ -6928,9 +6916,6 @@ local function ApplyConfigSettings()
     ApplySavedKeybinds()
     UpdateMinimapButtonVisibility()
     ApplyBlizzardBarSettings()
-    if DMLCD.RefreshBagnonIcons then
-        DMLCD.RefreshBagnonIcons()
-    end
     RefreshConfigFields()
     SaveCharacterLayoutSnapshot()
     Print("Configuration applied: " .. tostring(DB.barCount) .. " bar(s) with individual bar layouts.")
@@ -6959,9 +6944,6 @@ local function ResetFromConfig()
     ApplySavedKeybinds()
     UpdateMinimapButtonVisibility()
     ApplyBlizzardBarSettings()
-    if DMLCD.RefreshBagnonIcons then
-        DMLCD.RefreshBagnonIcons()
-    end
     RefreshConfigFields()
     SaveCharacterLayoutSnapshot()
     Print("Settings reset to defaults.")
@@ -7054,15 +7036,14 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "background", "Background", 385, -142)
     CreateCheckField(configFrame, "autoAssign", "Auto-assign learned spells", 385, -172)
     CreateCheckField(configFrame, "nativeCooldowns", "Normal spell/item cooldowns", 385, -202)
-    CreateCheckField(configFrame, "bagnonCompatibility", "Bagnon compatibility", 385, -232)
-    CreateCheckField(configFrame, "clickFallback", "Click fallback (ALE backup)", 385, -262)
-    CreateCheckField(configFrame, "showMessages", "Show cooldown messages", 385, -292)
-    CreateCheckField(configFrame, "showReadyMessages", "Show spell ready messages", 385, -322)
-    CreateCheckField(configFrame, "showMinimapButton", "Show minimap button", 385, -352)
-    CreateCheckField(configFrame, "debugMessages", "Addon debug messages", 385, -382)
-    CreateCheckField(configFrame, "resourceFade", "Fade when resource is low", 385, -412)
-    DMLCD.CreateRangeFinderDropdown(configFrame, 375, -447)
-    CreateBarLockKeyDropdown(configFrame, 375, -487)
+    CreateCheckField(configFrame, "clickFallback", "Click fallback (ALE backup)", 385, -232)
+    CreateCheckField(configFrame, "showMessages", "Show cooldown messages", 385, -262)
+    CreateCheckField(configFrame, "showReadyMessages", "Show spell ready messages", 385, -292)
+    CreateCheckField(configFrame, "showMinimapButton", "Show minimap button", 385, -322)
+    CreateCheckField(configFrame, "debugMessages", "Addon debug messages", 385, -352)
+    CreateCheckField(configFrame, "resourceFade", "Fade when resource is low", 385, -382)
+    DMLCD.CreateRangeFinderDropdown(configFrame, 375, -417)
+    CreateBarLockKeyDropdown(configFrame, 375, -457)
 
     CreateLabel(configFrame, "Profiles", 28, -520)
     CreateLabel(configFrame, "Profile name", 40, -550)
@@ -7325,9 +7306,6 @@ local function ApplyProfileSnapshotNow(snapshot, label, profileNameAfterLoad)
     ApplySavedKeybinds()
     UpdateMinimapButtonVisibility()
     ApplyBlizzardBarSettings()
-    if DMLCD.RefreshBagnonIcons then
-        DMLCD.RefreshBagnonIcons()
-    end
     RefreshConfigFields()
 
     -- Loading a saved profile also makes that profile the current working name
@@ -7502,7 +7480,7 @@ local function PrintHelp()
     Print("/dmlcd clear <slot> | clearbar <bar> <slot> | clearall | autoassign on|off")
     Print("Auto-assign watches newly learned active spells; cooldown START messages do not create slots.")
     Print("/dmlcd messages on|off | readymessages on|off | debug on|off")
-    Print("/dmlcd clickfallback on|off | nativecooldowns on|off | resourcefade on|off | bagnon on|off")
+    Print("/dmlcd clickfallback on|off | nativecooldowns on|off | resourcefade on|off")
     Print("/dmlcd fallbackdelay <0-5>")
     Print("/dmlcd kb | keybind | kb save | kb cancel")
     Print("/dmlcd profile save|load|delete <name> | profile list")
@@ -7560,8 +7538,7 @@ local function HandleSlash(message)
             "), anchors: " .. tostring(DB.showAnchors) .. ", slot numbers: " .. tostring(DB.showSlotNumbers) .. ", autoassign: " ..
             tostring(DB.autoAssign) .. ", click fallback: " .. tostring(DB.clickFallback) ..
             ", normal spell/item cooldowns: " .. tostring(DB.nativeCooldowns) ..
-            ", resource fade: " .. tostring(DB.resourceFade) ..
-            ", Bagnon compatibility: " .. tostring(DB.bagnonCompatibility) .. "."
+            ", resource fade: " .. tostring(DB.resourceFade) .. "."
         )
         Print(
             "Cooldown messages: " .. tostring(DB.showMessages) .. ", ready messages: " ..
@@ -8074,22 +8051,6 @@ local function HandleSlash(message)
         end
         SaveCharacterLayoutSnapshot()
         Print("Low-resource spell fading " .. (value and "enabled." or "disabled."))
-        return
-    elseif command == "bagnon" or command == "bagnoncompatibility" or command == "bagicons" then
-        local value = ParseOnOff(args[2])
-        if value == nil then
-            Print("Usage: /dmlcd bagnon on|off")
-            return
-        end
-        DB.bagnonCompatibility = value
-        if DMLCD.RefreshBagnonIcons then
-            DMLCD.RefreshBagnonIcons()
-        end
-        if RefreshConfigFields then
-            RefreshConfigFields()
-        end
-        SaveCharacterLayoutSnapshot()
-        Print("Bagnon custom-item icon compatibility " .. (value and "enabled." or "disabled."))
         return
     elseif command == "clickfallback" then
         local value = ParseOnOff(args[2])

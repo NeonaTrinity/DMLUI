@@ -1,3 +1,12 @@
+2.0.81 BAG-ADDON ISOLATION
+============================
+[ ] DMLCooldownBar.toc has no Bagnon OptionalDeps entry.
+[ ] DMLBagnonIcons.lua is not shipped or loaded.
+[ ] Config contains no Bagnon compatibility checkbox.
+[ ] /dmlcd help and status contain no Bagnon compatibility command/state.
+[ ] Open bags, loot items, use consumables, and Shift-compare items while DML is enabled; DML never hooks the bag addon.
+[ ] Custom DML item icons still render on DML buttons from DMLCustomItems.lua.
+
 2.0.80 PROFILE LOAD/COPY SEMANTICS
 
 [ ] Load Drudru: live bars become Drudru and Profile name becomes Drudru.
@@ -30,23 +39,15 @@
 DML Cooldown Bar 2.0.78 focused checks
 ========================================
 
-1. Leave Bagnon compatibility enabled, open populated bags, and watch addon
    memory for several minutes. It may fluctuate with normal Lua garbage
    collection, but should no longer climb rapidly from roughly 3 MB to 10 MB.
-2. Shift-hover newly looted and equipped items repeatedly with Bagnon enabled.
 3. Drag a global macro and a character macro onto normal DML buttons. Verify
    clicking and DML keybinds execute them.
 4. Move and swap macro buttons, save/load a profile, and test a Bar 1 stance page.
 5. Edit a macro in Blizzard's macro window and verify UPDATE_MACROS refreshes its
    DML name, icon, body, and secure click outside combat.
 
-DML COOLDOWN BAR 2.0.75 ITEM-CACHE / BAGNON SAFETY
 
-[ ] Enable Bagnon compatibility, /reload, and open/close bags repeatedly.
-[ ] Use potions, food, and water from both DML and Bagnon without Retrieving information stalls.
-[ ] Custom item icons still appear in Bagnon while compatibility is enabled.
-[ ] Disable Bagnon compatibility and Apply; ordinary Bagnon icons refresh normally.
-[ ] Re-enable compatibility and Apply; custom icons return without duplicate hooks or Lua errors.
 [ ] Assign the same consumable to several DML slots; all remain clickable after bag updates.
 [ ] /console scriptErrors 1 shows no errors during looting, consuming, banking, or /reload.
 
@@ -186,27 +187,15 @@ REGRESSION
 [ ] All Blizzard bar modes still work.
 [ ] XP, bags, micro menu, and vehicle controls remain unaffected.
 
-BAGNON CUSTOM ITEM ICONS (1.6.4)
 ---------------------------------
-[ ] Enable both Bagnon and DML Cooldown Bar.
-[ ] Place item 990100 in the backpack; Bagnon shows INV_Misc_Rune_01 instead of ?.
 [ ] Verify several IDs from 990101 through 990112 match DMLCustomItems.lua.
-[ ] Move a custom item between bags; the override remains after Bagnon refreshes.
 [ ] Open the bank and verify custom items there use the override icon.
-[ ] If Bagnon_Forever is enabled, a cached-character custom item keeps the icon.
-[ ] If Bagnon_GuildBank is enabled, custom guild-bank items use the override.
-[ ] Disable Bagnon and confirm DML Cooldown Bar still loads without errors.
 [ ] Change one icon in DMLCustomItems.lua, /reload, and verify both DML bars and
-    Bagnon use the new texture.
 
-Bagnon compatibility regression tests (1.6.5)
 ----------------------------------------------
-[ ] Enable Bagnon compatibility and open inventory; custom items show mapped icons.
 [ ] Move a custom item through at least five slots; every old slot clears.
 [ ] Move a normal item through at least five slots; every old slot clears.
 [ ] Reopen bags repeatedly; no accumulating ghost icons and no noticeable new delay.
-[ ] Disable Bagnon compatibility; visible custom items immediately return to client icons/? icons.
-[ ] Re-enable compatibility; visible custom items immediately regain mapped icons.
 [ ] Test bank, keyring, cached-character bags, and guild bank if available.
 
 V1.8.0 RESOURCE / CUSTOM RANK TESTS

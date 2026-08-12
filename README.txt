@@ -20,7 +20,6 @@ INSTALLATION
    Interface/AddOns/DMLCooldownBar/DMLCooldownBar.toc
    Interface/AddOns/DMLCooldownBar/DMLCustomItems.lua
    Interface/AddOns/DMLCooldownBar/DMLCooldownBar.lua
-   Interface/AddOns/DMLCooldownBar/DMLBagnonIcons.lua
 
 4. Restart the client or return to character selection.
 5. Enable DML Cooldown Bar and log in.
@@ -234,93 +233,17 @@ DMLCustomItems.lua contains a separate editable map:
 The icon may be a macro-style name such as INV_Misc_Book_09 or a full texture
 path. The included map defines IDs 990100 through 990112.
 
-BAGNON ICON COMPATIBILITY
--------------------------
-When Bagnon is enabled, DMLBagnonIcons.lua automatically applies the same
-DMLCustomItems.lua icon overrides to Bagnon item slots. Bagnon itself is not
-modified. The hook covers current-character inventory, bank, keyring, cached
-character views from Bagnon_Forever, and Bagnon_GuildBank when that module is
-loaded.
+These icon overrides apply only to DML buttons. DML does not hook Bagnon or any
+other bag addon. If custom bag icons are desired, patch that bag addon separately
+or use a dedicated bag addon.
 
-After changing an icon mapping, use /reload or close and reopen Bagnon so every
-visible slot refreshes. If Bagnon is disabled, this compatibility file quietly
-does nothing and DML Cooldown Bar continues to work normally.
-
-DML ACTIONS
------------
-Unlocked bars accept normal drag/drop. Locked bars use the configured Shift,
-Ctrl, or Alt modifier. Actions can be moved, swapped, or removed by dragging them off the bar.
-Left-click and right-click both activate the assigned action. Spells, items,
-macros, mounts, and companion pets can all use DML keybinds.
-
-Spell commands:
-
-  /dmlcd assign <slot> <spellId> [fallbackSeconds]
-  /dmlcd assignbar <bar> <slot> <spellId> [fallbackSeconds]
-
-Item commands:
-
-  /dmlcd assignitem <slot> <itemId>
-  /dmlcd assignitembar <bar> <slot> <itemId>
-
-ALE MESSAGE FORMAT
-------------------
-  DMLCD|START|spellId|cooldownMs|castToken|spellName
-  DMLCD|READY|spellId|0|castToken|spellName
-  DMLCD|LEARN|spellId|0|0|spellName
-
-BLIZZARD BAR OPTIONS
---------------------
-- Show blizz bar
-- Hide action bar
-- Hide action bar and background
-- Hide all
-- Hide gryphons
-
-Hide action bar affects only Blizzard's main/bonus action buttons and page controls;
-it does not hide the normal stance/form/aura bar. Hide action bar and background also
-removes the main action-bar artwork. Hide all additionally hides the stance/form/aura
-bar. Show blizz bar leaves Blizzard frame strata and levels untouched so the stock UI
-renders normally. XP, bags, micro menu, possess/vehicle controls, and their positions
-remain unchanged. Enabling Use DML aura bar hides only Blizzard's stance/form/aura bar
-and shows the movable DML replacement. Enabling Use DML pet bar does the same for the
-pet bar. Hidden Blizzard buttons retain their original keybindings, so clearing the
-Blizzard action bar first is recommended.
-
-KEY COMMANDS
-------------
-  /dmlcd help
-  /dmlcd config
-  /dmlcd version
-  /dmlcd status
-  /dmlcd kb
-  /dmlcd bars <1-5>
-  /dmlcd buttons <1-48>
-  /dmlcd rows <number>
-  /dmlcd columns <number>
-  /dmlcd spacing <horizontal> [vertical]
-  /dmlcd slotnumbers on|off
-  /dmlcd nativecooldowns on|off
-  /dmlcd clickfallback on|off
-  /dmlcd fallbackdelay <0-5>
-  /dmlcd blizzardbar show|all|action|background
-  /dmlcd hidegryphons on|off
-  /dmlcd anchors on|off
-  /dmlcd profile save|load|delete <name>
-  /dmlcd profile copy <name>
-  /dmlcd profile list
-  /dmlcd reset
-
-SAVED VARIABLES
----------------
-DMLCooldownBarDB is per-character and stores the active setup.
-DMLCooldownBarGlobalDB is account-wide and stores the single Saved Profile list.
-
-PROFILE COPYING (2.0.80)
+PROFILE LOADING AND COPYING (2.0.81)
 ------------------------
 The addon creates an initial profile for the current character using that
-character's name. The Profile name field is prefilled with that name. Loading
-other profiles does not change this save target or overwrite any saved profile.
+character's name. The Profile name field is prefilled with that name. Loading a
+saved profile changes the working Profile name field to that profile, but never
+overwrites it until Save Current is pressed. Copy To This Character applies a
+profile without changing the working Profile name field.
 
 To copy a layout to another character:
 1. Log into the source character with DML Cooldown Bar enabled and arrange its layout.
@@ -335,20 +258,6 @@ DML keybinds. No named profile is overwritten until Save Current is explicitly
 pressed. Active cooldown timers are not copied. Saved Profile and Copy Profile
 use the same list, so stale or unused character profiles can be removed with
 the normal Delete button.
-
-
-Bagnon compatibility
----------------------
-Enable or disable custom item icon overrides from /dmlcd config with the
-"Bagnon compatibility" checkbox, or use:
-
-/dmlcd bagnon on
-/dmlcd bagnon off
-
-The compatibility layer changes only mapped custom-item texture results and
-uses a bounded 512-entry item-link cache. It does not replace Bagnon's normal
-slot texture clearing, so moved items should not leave icon copies behind or
-allow the compatibility cache to grow for the entire play session.
 
 CUSTOM SPELL RANKS AND TOOLTIP TEXT (v1.8.0)
 
