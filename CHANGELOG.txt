@@ -1,3 +1,23 @@
+DML Cooldown Bar 2.0.83
+
+- Proc/condition-gated spells now fade to 35% while IsUsableSpell reports that their combat requirement is not currently met, and return to normal immediately on ACTIONBAR_UPDATE_USABLE.
+- Existing Resource fade behavior remains separate: insufficient mana/rage/energy fades only when Resource fade is enabled.
+- Hardened normal-item icon recovery without restoring BAG_UPDATE query spam: each unresolved assigned normal item gets at most one delayed recovery attempt after its initial request.
+- Successful GET_ITEM_INFO_RECEIVED events for an item currently assigned to DML may populate its icon/name even when another Blizzard UI component initiated the request first, preventing missed-event question-mark icons.
+- Failed item-info events schedule only the single bounded recovery attempt; there is still no recurring bag-event retry loop.
+- Successfully resolved normal-item icons are stored with DML assignments/profiles and used as a safe display fallback on later loads before the client item cache is ready.
+- DML custom items continue to bypass GetItemInfo/GetItemIcon for display metadata.
+
+DML Cooldown Bar 2.0.82
+
+- Reworked DML item metadata resolution to be one-shot and event-driven on the 3.3.5a client.
+- Normal assigned items call GetItemInfo at most once initially, then wait for the matching GET_ITEM_INFO_RECEIVED event; failed responses are not automatically retried.
+- Removed BAG_UPDATE from DML item-metadata handling so looting, consuming, banking, and bag changes cannot trigger metadata re-queries.
+- DMLCustomItems.lua entries now bypass GetItemInfo and GetItemIcon entirely for DML display and use their local name/icon metadata directly.
+- GET_ITEM_INFO_RECEIVED is ignored unless DML itself requested that exact normal item ID.
+- Unresolved normal/custom items are excluded from DML item range polling, and unresolved normal items are excluded from idle item-cooldown polling until their one-shot metadata request succeeds.
+- Secure item clicks and DML custom-item cooldowns remain supported.
+
 DML Cooldown Bar 2.0.81
 
 - Removed DML/Bagnon compatibility completely to isolate DML item handling from bag-addon item-info and tooltip paths.

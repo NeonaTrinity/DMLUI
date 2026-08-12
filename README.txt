@@ -223,6 +223,17 @@ Commands:
 
 CUSTOM ITEMS AND ICON OVERRIDES
 -------------------------------
+DML 2.0.83 keeps item metadata isolated from the Wrath client cache while also
+recovering safely from missed/early item-info events. A normal assigned item gets
+one initial metadata request and, only if still unresolved, one delayed recovery
+attempt. DML never retries item metadata from BAG_UPDATE. A successful
+GET_ITEM_INFO_RECEIVED for an item currently assigned to DML may complete that
+item even when another Blizzard UI component initiated the request. Once a
+normal item icon resolves, DML stores that icon with the assignment/profile so
+future profile loads can draw it immediately. Entries defined in
+DMLCustomItems.lua do not call GetItemInfo or GetItemIcon for DML display; their
+local name/icon fields are used directly.
+
 DMLCustomItems.lua contains a separate editable map:
 
   DMLCooldownBarCustomItems[itemId] = {
@@ -375,6 +386,16 @@ merely because they are present on the player.
 
 Queued on-next-melee attacks keep their own spell icon and use only the state
 border.
+
+CONDITIONAL / PROC-GATED SPELL FADING
+-------------------------------------
+DML mirrors the client usability state for assigned spells. If IsUsableSpell
+reports that a spell is unavailable because a combat condition is not currently
+met (for example a parry/block/proc, execute-style threshold, stance, or similar
+requirement), its icon fades to 35% alpha until ACTIONBAR_UPDATE_USABLE reports
+that it is usable again. This conditional fade is independent of the optional
+Resource fade setting. Resource shortages continue to fade only when Resource
+fade is enabled.
 
 A supported form, stance, or aura may optionally use a different active icon by
 adding active_icon to that spell in DMLCustomSpells.lua:

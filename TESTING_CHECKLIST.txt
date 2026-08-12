@@ -1,3 +1,24 @@
+2.0.83 PROC FADING + BOUNDED ITEM ICON RECOVERY
+================================================
+[ ] Put a proc/condition-gated skill (for example a parry/block/reactive ability) on DML: while unavailable its icon is faded to about 35%.
+[ ] Trigger the required combat condition: ACTIONBAR_UPDATE_USABLE restores the icon immediately when the skill becomes usable.
+[ ] Let the proc/condition expire: the icon fades again without changing the spell assignment or cooldown state.
+[ ] Disable Resource fade and verify proc/condition fading still works, while low mana/rage/energy no longer causes the separate resource fade.
+[ ] Assign/load a normal item whose client metadata is initially unavailable: DML performs only the initial request plus at most one delayed recovery attempt; BAG_UPDATE never causes retries.
+[ ] If another Blizzard UI element causes GET_ITEM_INFO_RECEIVED for an item already assigned to DML, DML accepts that exact item's successful event and replaces the question-mark icon.
+[ ] After a normal item icon resolves, save/load or copy the profile and verify the stored icon displays immediately even before native tooltip metadata is ready.
+[ ] Extended loot/consume/equipment/Shift-compare testing does not produce global "Retrieving item information" failures.
+
+2.0.82 ITEM-INFO ISOLATION
+===========================
+[ ] DMLCooldownBar.lua does not register BAG_UPDATE. BAG_UPDATE_COOLDOWN remains registered for consumable cooldown visuals.
+[ ] Assign a normal uncached item: DML requests its metadata once and waits for GET_ITEM_INFO_RECEIVED without timed/bag-event retries.
+[ ] A failed GET_ITEM_INFO_RECEIVED response does not cause DML to retry the item during the same UI session.
+[ ] Assign DMLCustomItems.lua IDs and verify their local names/icons appear without GetItemInfo/GetItemIcon metadata requests.
+[ ] Loot/use/bank normal consumables for an extended session and verify bag/equipment tooltips continue resolving normally.
+[ ] Shift-compare newly looted equipment while DML is enabled and verify the stock comparison tooltip remains stable.
+[ ] /reload still restores all item assignments, secure clicks, profiles, macros, mounts, pet bar, and aura bar.
+
 2.0.81 BAG-ADDON ISOLATION
 ============================
 [ ] DMLCooldownBar.toc has no Bagnon OptionalDeps entry.

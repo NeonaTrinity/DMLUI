@@ -23,17 +23,21 @@ local DMLCD = DMLCooldownBar
 DMLCD.scalingBonusDamage = {}
 DMLCD.scalingManaCost = {}
 
--- Item information is session-cached so assigned consumables do not repeatedly
--- re-query the 3.3.5 client item cache during BAG_UPDATE refreshes.
--- Failed lookups use a short retry delay instead of immediately requesting the
--- same item again on every bag event.
+-- Item information is deliberately bounded and event-driven on the Wrath
+-- client. Normal assigned items receive one initial metadata request and, only
+-- if still unresolved, one delayed recovery attempt. BAG_UPDATE never retries
+-- metadata. A successful GET_ITEM_INFO_RECEIVED for an assigned item may also
+-- populate the cache even when another UI component initiated that request.
+-- DML-defined custom items never call GetItemInfo/GetItemIcon just to draw the
+-- button; their local name/icon metadata is authoritative for DML display.
 DMLCD.itemInfoCache = DMLCD.itemInfoCache or {}
-DMLCD.itemInfoRetryAt = DMLCD.itemInfoRetryAt or {}
-DMLCD.itemIconFallbackCache = DMLCD.itemIconFallbackCache or {}
-DMLCD.ITEM_INFO_RETRY_DELAY = 5
+DMLCD.itemInfoRequested = DMLCD.itemInfoRequested or {}
+DMLCD.itemInfoAttempts = DMLCD.itemInfoAttempts or {}
+DMLCD.itemInfoRecoveryDue = DMLCD.itemInfoRecoveryDue or {}
+DMLCD.itemInfoAssigned = DMLCD.itemInfoAssigned or {}
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.81"
+local ADDON_VERSION = "2.0.83"
 local CHAT_PREFIX = "DMLCD|"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -1667,18 +1671,44 @@ local function NormalizeIconPath(icon)
     return "Interface\\Icons\\" .. icon
 end
 
-function DMLCD.InvalidateItemInfoCache(itemId)
+function DMLCD.CacheItemInfoFromClient(itemId)
     itemId = tonumber(itemId)
-    if not itemId then
-        return
+    if not itemId or not GetItemInfo then
+        return nil
     end
 
-    DMLCD.itemInfoCache[itemId] = nil
-    DMLCD.itemInfoRetryAt[itemId] = nil
-    DMLCD.itemIconFallbackCache[itemId] = nil
+    -- Call only when DML is making one of its bounded metadata attempts or when
+    -- GET_ITEM_INFO_RECEIVED has told us that this assigned item is ready.
+    local itemName, itemLink, _, _, _, _, _, _, _, itemIcon = GetItemInfo(itemId)
+    if not itemName and not itemLink and not itemIcon then
+        return nil
+    end
+
+    local cached = {
+        name = itemName,
+        link = itemLink,
+        icon = itemIcon
+    }
+    DMLCD.itemInfoCache[itemId] = cached
+    DMLCD.itemInfoRecoveryDue[itemId] = nil
+    return cached
 end
 
-function DMLCD.ResolveItem(itemId, suppliedName)
+function DMLCD.ScheduleItemInfoRecovery(itemId)
+    itemId = tonumber(itemId)
+    local cached = itemId and DMLCD.itemInfoCache[itemId] or nil
+    if not itemId or (cached and cached.icon) then
+        return
+    end
+    if (tonumber(DMLCD.itemInfoAttempts[itemId]) or 0) >= 2 then
+        return
+    end
+    if not DMLCD.itemInfoRecoveryDue[itemId] then
+        DMLCD.itemInfoRecoveryDue[itemId] = (GetTime and GetTime() or 0) + 1.5
+    end
+end
+
+function DMLCD.ResolveItem(itemId, suppliedName, suppliedIcon)
     itemId = tonumber(itemId)
     if not itemId then
         return nil
@@ -1686,49 +1716,56 @@ function DMLCD.ResolveItem(itemId, suppliedName)
 
     local definitions = GetCustomItemDefinitions()
     local custom = definitions[itemId]
+
+    -- Custom DML items already provide the display data we need. Do not touch
+    -- the global client item-info query path for these IDs; some private-server
+    -- custom records never become valid client-cache entries.
+    if custom then
+        local customName = custom.name
+        local customIcon = NormalizeIconPath(custom.icon)
+        return {
+            kind = "item",
+            itemId = itemId,
+            name = customName or suppliedName or ("Item " .. tostring(itemId)),
+            link = nil,
+            icon = customIcon or QUESTION_ICON,
+            secureItem = "item:" .. tostring(itemId),
+            clientKnown = false,
+            customDefined = true
+        }
+    end
+
+    DMLCD.itemInfoAssigned[itemId] = true
+
     local cached = DMLCD.itemInfoCache[itemId]
-    local now = GetTime and GetTime() or 0
-    local retryAt = tonumber(DMLCD.itemInfoRetryAt[itemId]) or 0
-
-    if not cached and GetItemInfo and now >= retryAt then
-        -- One GetItemInfo call supplies every value we need. Calling it twice
-        -- can duplicate server item-query traffic on the Wrath client.
-        local itemName, itemLink, _, _, _, _, _, _, _, itemIcon = GetItemInfo(itemId)
-        if itemName or itemLink or itemIcon then
-            cached = {
-                name = itemName,
-                link = itemLink,
-                icon = itemIcon
-            }
-            DMLCD.itemInfoCache[itemId] = cached
-            DMLCD.itemInfoRetryAt[itemId] = nil
-        else
-            DMLCD.itemInfoRetryAt[itemId] = now + DMLCD.ITEM_INFO_RETRY_DELAY
+    if not cached and (tonumber(DMLCD.itemInfoAttempts[itemId]) or 0) < 1 and GetItemInfo then
+        -- Mark first so synchronous refresh/re-entry cannot issue a duplicate.
+        -- If the client does not have the metadata ready yet, schedule exactly
+        -- one delayed recovery attempt instead of retrying on bag changes.
+        DMLCD.itemInfoRequested[itemId] = true
+        DMLCD.itemInfoAttempts[itemId] = 1
+        cached = DMLCD.CacheItemInfoFromClient(itemId)
+        if not cached or not cached.icon then
+            DMLCD.ScheduleItemInfoRecovery(itemId)
         end
+    elseif cached and not cached.icon then
+        DMLCD.ScheduleItemInfoRecovery(itemId)
     end
 
-    local fallbackIcon = DMLCD.itemIconFallbackCache[itemId]
-    if fallbackIcon == nil and GetItemIcon then
-        local ok, icon = pcall(GetItemIcon, itemId)
-        fallbackIcon = ok and icon or false
-        DMLCD.itemIconFallbackCache[itemId] = fallbackIcon
-    end
-
-    local customName = custom and custom.name
-    local customIcon = custom and NormalizeIconPath(custom.icon)
     local itemName = cached and cached.name or nil
     local itemLink = cached and cached.link or nil
     local itemIcon = cached and cached.icon or nil
+    local savedIcon = NormalizeIconPath(suppliedIcon)
 
     return {
         kind = "item",
         itemId = itemId,
-        name = itemName or customName or suppliedName or ("Item " .. tostring(itemId)),
+        name = itemName or suppliedName or ("Item " .. tostring(itemId)),
         link = itemLink,
-        icon = customIcon or itemIcon or (fallbackIcon or nil) or QUESTION_ICON,
+        icon = itemIcon or savedIcon or QUESTION_ICON,
         secureItem = "item:" .. tostring(itemId),
         clientKnown = (itemName or itemLink) and true or false,
-        customDefined = custom and true or false
+        customDefined = false
     }
 end
 
@@ -1990,7 +2027,7 @@ local function ResolveAssignment(assignment)
     end
     local kind = GetAssignmentKind(assignment)
     if kind == "item" then
-        return DMLCD.ResolveItem(assignment.itemId, assignment.name)
+        return DMLCD.ResolveItem(assignment.itemId, assignment.name, assignment.icon)
     end
     if kind == "companion" then
         return DMLCD.ResolveCompanion(
@@ -2189,8 +2226,11 @@ function DMLCD.ApplyButtonIconAppearance(button)
     end
 
     local iconAlpha = 1
-    if DB and DB.resourceFade and button.dmlResourceLow then
+    if button.dmlConditionUnavailable then
         iconAlpha = 0.35
+    end
+    if DB and DB.resourceFade and button.dmlResourceLow then
+        iconAlpha = math.min(iconAlpha, 0.35)
     end
     if DMLCD.GetRangeFinderMode() == "FADE" and button.dmlOutOfRange then
         iconAlpha = math.min(iconAlpha, 0.35)
@@ -2203,25 +2243,29 @@ local function SetIconCooldownAppearance(button, active)
     DMLCD.ApplyButtonIconAppearance(button)
 end
 
-function DMLCD.GetSpellResourceLow(assignment)
-    if not DB or not DB.resourceFade or not assignment or GetAssignmentKind(assignment) ~= "spell" then
-        return false
-    end
-    if not IsUsableSpell then
-        return false
+function DMLCD.GetSpellUsabilityCode(assignment)
+    if not assignment or GetAssignmentKind(assignment) ~= "spell" or not IsUsableSpell then
+        return 0
     end
 
     local spell = ResolveSpell(assignment.spellId, assignment.name)
     if not spell or not spell.clientKnown then
-        return false
+        return 0
     end
 
     local query = spell.castName or spell.name or tonumber(assignment.spellId)
-    local ok, _, noResource = pcall(IsUsableSpell, query)
+    local ok, usable, noResource = pcall(IsUsableSpell, query)
     if not ok then
-        return false
+        return 0
     end
-    return noResource and true or false
+
+    if noResource then
+        return 1 -- resource-starved; obey the existing Resource fade setting
+    end
+    if not usable or tonumber(usable) == 0 then
+        return 2 -- conditional/proc/target/stance requirement is not currently met
+    end
+    return 0
 end
 
 function DMLCD.UpdateButtonResourceVisual(button, cache)
@@ -2230,20 +2274,21 @@ function DMLCD.UpdateButtonResourceVisual(button, cache)
     end
 
     local assignment = DMLCD.GetAssignmentForIndex(button.dmlIndex)
-    local low = false
-    if assignment and GetAssignmentKind(assignment) == "spell" and DB.resourceFade then
+    local code = 0
+    if assignment and GetAssignmentKind(assignment) == "spell" then
         local key = tostring(tonumber(assignment.spellId) or assignment.spellId)
         if cache and cache[key] ~= nil then
-            low = cache[key]
+            code = cache[key]
         else
-            low = DMLCD.GetSpellResourceLow(assignment)
+            code = DMLCD.GetSpellUsabilityCode(assignment)
             if cache then
-                cache[key] = low
+                cache[key] = code
             end
         end
     end
 
-    button.dmlResourceLow = low
+    button.dmlResourceLow = code == 1
+    button.dmlConditionUnavailable = code == 2
     DMLCD.ApplyButtonIconAppearance(button)
 end
 
@@ -2282,8 +2327,11 @@ function DMLCD.GetAssignmentRangeState(assignment, resolved)
                 result = value
             end
         end
-    elseif kind == "item" and IsItemInRange then
-        local itemQuery = tonumber(assignment.itemId) or resolved.link or resolved.name
+    elseif kind == "item" and IsItemInRange and resolved.clientKnown then
+        -- Do not ask range APIs about unresolved/custom item records. On old
+        -- Wrath clients those APIs can indirectly touch the same global item
+        -- cache that DML intentionally keeps one-shot.
+        local itemQuery = resolved.link or tonumber(assignment.itemId) or resolved.name
         if itemQuery then
             local ok, value = pcall(IsItemInRange, itemQuery, "target")
             if ok then
@@ -2392,8 +2440,21 @@ if kind == "item" then
         if not GetItemCooldown then
             return nil
         end
+
+        local itemId = tonumber(assignment.itemId)
+        local custom = itemId and GetCustomItemDefinitions()[itemId] or nil
+        -- A normal item whose one-shot metadata request is still unresolved is
+        -- left completely alone by the idle polling path. Custom DML items may
+        -- still use GetItemCooldown because that API does not require DML to
+        -- query their tooltip/name metadata.
+        if itemId and not custom and DMLCD.itemInfoRequested[itemId] and
+            not DMLCD.itemInfoCache[itemId]
+        then
+            return nil
+        end
+
         local ok
-        ok, startTime, duration, enable = pcall(GetItemCooldown, tonumber(assignment.itemId))
+        ok, startTime, duration, enable = pcall(GetItemCooldown, itemId)
         if not ok then
             return nil
         end
@@ -2860,6 +2921,8 @@ local function ShowButtonTooltip(button)
 
     if button.dmlResourceLow then
         GameTooltip:AddLine("Not enough mana or other spell resource.", 1, 0.35, 0.35, true)
+    elseif button.dmlConditionUnavailable then
+        GameTooltip:AddLine("This ability is not currently usable; a combat condition or proc may be required.", 1, 0.55, 0.25, true)
     end
 
     if not simple then
@@ -2904,6 +2967,7 @@ local function UpdateButton(button)
             button.pendingText:Hide()
         end
         button.dmlResourceLow = false
+        button.dmlConditionUnavailable = false
         button.dmlRangeState = nil
         button.dmlOutOfRange = false
         if button.rangeBorder then
@@ -2923,7 +2987,11 @@ local function UpdateButton(button)
     if resolved then
         assignment.kind = kind
         assignment.name = resolved.name
-        if kind == "companion" then
+        if kind == "item" then
+            if resolved.icon and resolved.icon ~= QUESTION_ICON then
+                assignment.icon = resolved.icon
+            end
+        elseif kind == "companion" then
             assignment.companionType = resolved.companionType or assignment.companionType
             assignment.companionIndex = resolved.companionIndex or assignment.companionIndex
             assignment.spellId = resolved.spellId or assignment.spellId
@@ -3025,16 +3093,57 @@ function DMLCD.HandleItemInfoReceived(itemId, success)
         return
     end
 
-    if success == false or success == 0 then
-        local now = GetTime and GetTime() or 0
-        DMLCD.itemInfoRetryAt[itemId] = now + DMLCD.ITEM_INFO_RETRY_DELAY
+    -- Never involve DML in arbitrary global item events. We only accept an
+    -- event for an item that has actually appeared on a DML bar this session.
+    if not DMLCD.itemInfoAssigned[itemId] then
         return
     end
 
-    -- The client says this exact item is ready. Clear only that cache entry and
-    -- refresh only DML buttons assigned to that item.
-    DMLCD.InvalidateItemInfoCache(itemId)
-    DMLCD.RefreshItemAssignmentButtons(itemId)
+    -- Custom items use DMLCustomItems.lua exclusively for display metadata.
+    if GetCustomItemDefinitions()[itemId] then
+        return
+    end
+
+    if success == false or success == 0 then
+        DMLCD.ScheduleItemInfoRecovery(itemId)
+        return
+    end
+
+    -- A success event means the client cache should now be ready. It is safe to
+    -- collect that exact assigned item even when another Blizzard UI component
+    -- initiated the underlying request first.
+    DMLCD.itemInfoRequested[itemId] = true
+    local cached = DMLCD.CacheItemInfoFromClient(itemId)
+    if cached then
+        DMLCD.RefreshItemAssignmentButtons(itemId)
+    end
+    if not cached or not cached.icon then
+        DMLCD.ScheduleItemInfoRecovery(itemId)
+    end
+end
+
+function DMLCD.ProcessItemInfoRecovery(now)
+    now = tonumber(now) or (GetTime and GetTime() or 0)
+    local itemId, due
+    for itemId, due in pairs(DMLCD.itemInfoRecoveryDue) do
+        if now >= (tonumber(due) or 0) then
+            DMLCD.itemInfoRecoveryDue[itemId] = nil
+            itemId = tonumber(itemId)
+            local cachedBefore = itemId and DMLCD.itemInfoCache[itemId] or nil
+            if itemId and DMLCD.itemInfoAssigned[itemId] and
+                not (cachedBefore and cachedBefore.icon) and
+                not GetCustomItemDefinitions()[itemId] and
+                (tonumber(DMLCD.itemInfoAttempts[itemId]) or 0) < 2
+            then
+                DMLCD.itemInfoRequested[itemId] = true
+                DMLCD.itemInfoAttempts[itemId] = (tonumber(DMLCD.itemInfoAttempts[itemId]) or 0) + 1
+                local cached = DMLCD.CacheItemInfoFromClient(itemId)
+                if cached then
+                    DMLCD.RefreshItemAssignmentButtons(itemId)
+                end
+            end
+        end
+    end
 end
 
 function DMLCD.RefreshBarOneStancePage()
@@ -3232,6 +3341,7 @@ local function AssignItemButton(index, itemId, suppliedName, feedbackMode, pageO
         kind = "item",
         itemId = itemId,
         name = item.name,
+        icon = item.icon ~= QUESTION_ICON and item.icon or nil,
         fallback = 0
     }, pageOverride)
 
@@ -3393,6 +3503,7 @@ local function CopyAssignment(assignment)
     }
     if copy.kind == "item" then
         copy.itemId = tonumber(assignment.itemId) or assignment.itemId
+        copy.icon = assignment.icon
     elseif copy.kind == "companion" then
         copy.companionType = DMLCD.NormalizeCompanionType(assignment.companionType)
         copy.companionIndex = tonumber(assignment.companionIndex) or assignment.companionIndex
@@ -5879,7 +5990,8 @@ function DMLCD.UpdateIdleButtonVisuals(_, button)
 
     local assignment = DMLCD.GetAssignmentForIndex(button.dmlIndex)
     UpdateButtonCooldownVisual(button, false)
-    DMLCD.UpdateButtonResourceVisual(button, DMLCD.updateResourceCache)
+    -- Spell usability/resource state is event-driven (ACTIONBAR_UPDATE_USABLE
+    -- and power events) rather than polled every 0.1 seconds.
     DMLCD.UpdateButtonActionStateVisual(
         button,
         assignment,
@@ -5914,6 +6026,8 @@ local function CreateUpdateFrame()
         updateElapsed = 0
 
         local now = GetTime()
+
+        DMLCD.ProcessItemInfoRecovery(now)
 
         if blizzardBarRefreshDue and now >= blizzardBarRefreshDue then
             if IsInCombat() then
@@ -8228,7 +8342,6 @@ eventFrame:RegisterEvent("UNIT_ENERGY")
 eventFrame:RegisterEvent("UNIT_RUNIC_POWER")
 eventFrame:RegisterEvent("UNIT_DISPLAYPOWER")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
-eventFrame:RegisterEvent("BAG_UPDATE")
 eventFrame:RegisterEvent("COMPANION_UPDATE")
 eventFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 eventFrame:RegisterEvent("ACTIONBAR_PAGE_CHANGED")
@@ -8342,10 +8455,6 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         RefreshAllButtons()
     elseif event == "UPDATE_MACROS" then
         RefreshAllButtons()
-    elseif event == "BAG_UPDATE" then
-        -- Bag changes affect item assignments only. Successful item data remains
-        -- cached; unresolved entries retry no more than once every five seconds.
-        DMLCD.RefreshItemAssignmentButtons()
     elseif event == "GET_ITEM_INFO_RECEIVED" then
         local itemId, success = ...
         DMLCD.HandleItemInfoReceived(itemId, success)
