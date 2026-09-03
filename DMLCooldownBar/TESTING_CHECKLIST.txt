@@ -1,0 +1,26 @@
+DML Cooldown Bar 2.0.84 Universal - test checklist
+
+NATIVE / PORTABLE
+[ ] Remove or disable DMLCooldownBar_J3Spells and /reload.
+[ ] J3Spells checkbox is greyed out and cannot be checked.
+[ ] Normal spell cooldowns display from Blizzard APIs.
+[ ] Item cooldowns, macros, mounts, pets, aura bar, profiles and keybinds work.
+[ ] No DMLCD system messages are filtered/consumed by the core addon.
+
+J3SPells SERVER
+[ ] Install both addon folders and /reload.
+[ ] J3Spells checkbox is enabled and can be checked.
+[ ] Check J3Spells and Apply.
+[ ] Ordinary spell with a normal server cooldown still shows native cooldown.
+[ ] server_confirmed_cooldown spell waits for J3 START/COOLDOWN/RESET.
+[ ] Lua-managed DMLCD|COOLDOWN updates override the native display while active.
+[ ] DMLCD|READY and RESET clear the J3 timer.
+[ ] DMLCD|META/LEARN update spell metadata/autoassignment.
+[ ] DMLCD|BONUS/MANA scaling text appears on the DML tooltip.
+[ ] Uncheck J3Spells and Apply: DML immediately returns to native behavior.
+
+MIGRATION
+[ ] Old private-server SavedVariables auto-enable J3 when module is installed.
+[ ] Old Native SavedVariables keep J3 disabled.
+[ ] Loading/copying named profiles does not toggle the J3 checkbox.
+[ ] Saved profiles and bar assignments remain intact.

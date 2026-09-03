@@ -1,27 +1,15 @@
 -- DML Cooldown Bar
 -- World of Warcraft 3.3.5a / Interface 30300
 --
--- Receives server messages in this form:
---   DMLCD|START|spellId|cooldownMs|castToken|spellName[|rank|customText|family]
---   DMLCD|READY|spellId|0|castToken|spellName[|rank|customText|family]
---   DMLCD|LEARN|spellId|0|0|spellName[|rank|customText|family]
---   DMLCD|META|spellId|0|0|spellName[|rank|customText|family]
---   DMLCD|COOLDOWN|spellId|cooldownMs
---   DMLCD|RESET|spellId
---   DMLCD|BONUS|spellId|bonusDamage
---   DMLCD|MANA|spellId|extraManaCost
+-- Universal build. Native WoW 3.3.5a cooldown APIs are always the baseline.
+-- Optional server integrations may register with the core without being required
+-- for normal addon operation.
 --
 -- The addon never casts automatically. Assigned buttons use Blizzard's
 -- SecureActionButtonTemplate and only cast in response to a hardware click.
 
 DMLCooldownBar = DMLCooldownBar or {}
 local DMLCD = DMLCooldownBar
-
--- Server-supplied scaling values are intentionally session-cached.
--- The authoritative scaling script resends them on login, level changes, or
--- learning the spell. No OnUpdate polling or combat-log scanning is used.
-DMLCD.scalingBonusDamage = {}
-DMLCD.scalingManaCost = {}
 
 -- Item information is deliberately bounded and event-driven on the Wrath
 -- client. Normal assigned items receive one initial metadata request and, only
@@ -37,8 +25,7 @@ DMLCD.itemInfoRecoveryDue = DMLCD.itemInfoRecoveryDue or {}
 DMLCD.itemInfoAssigned = DMLCD.itemInfoAssigned or {}
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.83"
-local CHAT_PREFIX = "DMLCD|"
+local ADDON_VERSION = "2.0.84"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -56,7 +43,7 @@ local function GetCustomItemDefinitions()
 end
 
 -- Optional user-editable spell metadata is loaded from DMLCustomSpells.lua.
--- Server LEARN/META messages may add per-character metadata at runtime.
+-- Optional integration modules may add runtime metadata without being required.
 function DMLCD.GetCustomSpellDefinitions()
     if type(DMLCooldownBarCustomSpells) == "table" then
         return DMLCooldownBarCustomSpells
@@ -77,7 +64,7 @@ local BAR_DRAG_HANDLE_HEIGHT = 18
 local BAR_DRAG_HANDLE_GAP = 2
 
 local defaults = {
-    version = 22,
+    version = 23,
     locked = false,
     shown = true,
     barCount = 1,
@@ -92,13 +79,10 @@ local defaults = {
     background = true,
     showSlotNumbers = true,
     autoAssign = true,
-    clickFallback = true,
-    nativeCooldowns = true,
+    j3SpellsIntegration = false,
     resourceFade = true,
     rangeFinder = "OFF",
     simpleTooltips = false,
-    showMessages = false,
-    showReadyMessages = false,
     debugMessages = false,
     blizzardBarMode = "SHOW",
     hideGryphons = false,
@@ -109,7 +93,6 @@ local defaults = {
     barLockKey = "SHIFT",
     showMinimapButton = true,
     minimapAngle = 225,
-    fallbackDelay = 0.75,
     point = "CENTER",
     relativePoint = "CENTER",
     x = 0,
@@ -127,7 +110,6 @@ local updateElapsed = 0
 local pendingFallbacks = {}
 local pendingSecureRefresh = false
 local pendingBindingRefresh = false
-local chatFilterInstalled = false
 local configFrame
 local configControls = {}
 local keybindOwner
@@ -176,6 +158,83 @@ local function DebugPrint(message)
     if DB and DB.debugMessages then
         Print(message)
     end
+end
+
+-- Optional integrations register a provider object here. The core remains fully
+-- functional when no provider addon is installed.
+DMLCD.optionalIntegrations = DMLCD.optionalIntegrations or {}
+
+function DMLCD.GetDB()
+    return DB
+end
+
+function DMLCD.RegisterOptionalIntegration(name, provider)
+    if not name or type(provider) ~= "table" then
+        return false
+    end
+    DMLCD.optionalIntegrations[tostring(name)] = provider
+    return true
+end
+
+function DMLCD.GetOptionalIntegration(name)
+    return DMLCD.optionalIntegrations and DMLCD.optionalIntegrations[tostring(name)] or nil
+end
+
+function DMLCD.IsJ3IntegrationAvailable()
+    return type(DMLCD.GetOptionalIntegration("J3Spells")) == "table"
+end
+
+function DMLCD.IsJ3IntegrationEnabled()
+    return DB and DB.j3SpellsIntegration and DMLCD.IsJ3IntegrationAvailable() or false
+end
+
+function DMLCD.SetJ3IntegrationEnabled(enabled, quiet)
+    local provider = DMLCD.GetOptionalIntegration("J3Spells")
+    enabled = enabled and true or false
+    if enabled and not provider then
+        if DB then DB.j3SpellsIntegration = false end
+        if not quiet then
+            Print("J3Spells integration module is not installed.")
+        end
+        return false
+    end
+
+    if DB then
+        DB.j3SpellsIntegration = enabled
+    end
+
+    if provider then
+        if enabled and provider.Enable then
+            provider:Enable()
+        elseif not enabled and provider.Disable then
+            provider:Disable()
+        end
+    end
+
+    if initialized and RefreshConfigFields then
+        RefreshConfigFields()
+    end
+    return true
+end
+
+function DMLCD.TryLoadJ3Integration()
+    if DMLCD.IsJ3IntegrationAvailable() then
+        return true
+    end
+    if not GetAddOnInfo or not LoadAddOn then
+        return false
+    end
+
+    local addonName = GetAddOnInfo("DMLCooldownBar_J3Spells")
+    if not addonName then
+        return false
+    end
+
+    local loaded = IsAddOnLoaded and IsAddOnLoaded("DMLCooldownBar_J3Spells")
+    if not loaded then
+        pcall(LoadAddOn, "DMLCooldownBar_J3Spells")
+    end
+    return DMLCD.IsJ3IntegrationAvailable()
 end
 
 local function Clamp(value, minimum, maximum)
@@ -437,6 +496,11 @@ local function CopyDefaults(reset)
 
     DB = DMLCooldownBarDB
     local savedVersion = tonumber(DB.version) or 0
+    local legacyJ3Detected = not reset and (
+        DB.nativeCooldowns ~= nil or DB.clickFallback ~= nil or
+        type(DB.cooldowns) == "table" or type(DB.spellMetadata) == "table"
+    )
+    local legacyJ3Requested = DB.j3SpellsIntegration
 
     -- Migrate the single 1.0.x spacing value before filling the new defaults.
     local legacySpacing = tonumber(DB.spacing)
@@ -460,6 +524,36 @@ local function CopyDefaults(reset)
     end
     DB.spacing = nil
     DB.readyText = nil
+
+    -- One-time migration from the old private-server build. The universal core
+    -- no longer owns ALE state, but the optional J3 integration can reuse it.
+    if not reset then
+        if type(DB.spellMetadata) == "table" and type(DB.j3SpellMetadata) ~= "table" then
+            DB.j3SpellMetadata = DB.spellMetadata
+        end
+        if type(DB.cooldowns) == "table" and type(DB.j3Cooldowns) ~= "table" then
+            DB.j3Cooldowns = DB.cooldowns
+        end
+        if legacyJ3Detected and type(DB.j3Settings) ~= "table" then
+            DB.j3Settings = {
+                clickFallback = DB.clickFallback ~= false,
+                fallbackDelay = tonumber(DB.fallbackDelay) or 0.75,
+                showMessages = DB.showMessages and true or false,
+                showReadyMessages = DB.showReadyMessages and true or false
+            }
+        end
+        if legacyJ3Detected and legacyJ3Requested == nil then
+            DB.j3SpellsIntegration = true
+        end
+    end
+
+    DB.cooldowns = nil
+    DB.spellMetadata = nil
+    DB.clickFallback = nil
+    DB.nativeCooldowns = nil
+    DB.showMessages = nil
+    DB.showReadyMessages = nil
+    DB.fallbackDelay = nil
 
     if reset or type(DB.assignments) ~= "table" then
         DB.assignments = {}
@@ -539,12 +633,6 @@ local function CopyDefaults(reset)
             end
         end
     end
-    if reset or type(DB.spellMetadata) ~= "table" then
-        DB.spellMetadata = {}
-    end
-    if reset or type(DB.cooldowns) ~= "table" then
-        DB.cooldowns = {}
-    end
     if reset or type(DB.knownCooldownDurations) ~= "table" then
         DB.knownCooldownDurations = {}
     end
@@ -590,7 +678,7 @@ local function CopyDefaults(reset)
         }
     end
 
-    DB.version = 22
+    DB.version = 23
     DB.barCount = Clamp(DB.barCount, 1, MAX_BARS) or defaults.barCount
     DB.buttonCount = Clamp(DB.buttonCount, 1, MAX_BUTTONS) or defaults.buttonCount
     DB.columns = Clamp(DB.columns, 1, MAX_BUTTONS) or defaults.columns
@@ -598,7 +686,6 @@ local function CopyDefaults(reset)
     DB.buttonSize = Clamp(DB.buttonSize, 24, 64) or defaults.buttonSize
     DB.spacingX = Clamp(DB.spacingX, 0, 40) or defaults.spacingX
     DB.spacingY = Clamp(DB.spacingY, 0, 40) or defaults.spacingY
-    DB.fallbackDelay = Clamp(DB.fallbackDelay, 0, 5) or defaults.fallbackDelay
     DB.minimapAngle = tonumber(DB.minimapAngle) or defaults.minimapAngle
 
     -- Existing characters used one shared geometry for every bar. Copy that
@@ -648,9 +735,8 @@ local function CopyDefaults(reset)
         end
     end
 
-    DB.showMessages = DB.showMessages and true or false
     DB.bagnonCompatibility = nil
-    DB.showReadyMessages = DB.showReadyMessages and true or false
+    DB.j3SpellsIntegration = DB.j3SpellsIntegration and true or false
     DB.debugMessages = DB.debugMessages and true or false
     DB.hideGryphons = DB.hideGryphons and true or false
     DB.useDMLAuraBar = DB.useDMLAuraBar and true or false
@@ -872,14 +958,13 @@ local function BuildLayoutSnapshot()
     local snapshot = {}
     local key
     for key in pairs(defaults) do
-        if key ~= "version" then
+        if key ~= "version" and key ~= "j3SpellsIntegration" then
             snapshot[key] = DeepCopy(DB[key])
         end
     end
 
     snapshot.assignments = DeepCopy(DB.assignments or {})
     snapshot.stanceBarAssignments = DeepCopy(DB.stanceBarAssignments or {})
-    snapshot.spellMetadata = DeepCopy(DB.spellMetadata or {})
     snapshot.keybinds = DeepCopy(DB.keybinds or {})
     snapshot.barPositions = DeepCopy(DB.barPositions or {})
     snapshot.petBarPosition = DeepCopy(DB.petBarPosition or {})
@@ -1200,8 +1285,11 @@ function DMLCD.GetSpellMetadata(spellId)
     local metadata = {}
     DMLCD.CopyNonEmptySpellMetadata(metadata, DMLCD.GetCustomSpellDefinitions()[spellId])
 
-    if DB and type(DB.spellMetadata) == "table" then
-        DMLCD.CopyNonEmptySpellMetadata(metadata, DB.spellMetadata[tostring(spellId)] or DB.spellMetadata[spellId])
+    if DMLCD.IsJ3IntegrationEnabled() then
+        local provider = DMLCD.GetOptionalIntegration("J3Spells")
+        if provider and provider.GetSpellMetadata then
+            DMLCD.CopyNonEmptySpellMetadata(metadata, provider:GetSpellMetadata(spellId))
+        end
     end
 
     if next(metadata) then
@@ -1211,13 +1299,11 @@ function DMLCD.GetSpellMetadata(spellId)
 end
 
 function DMLCD.IsServerConfirmedCooldownOnly(spellId)
-    local metadata = DMLCD.GetSpellMetadata(spellId)
-
-    if type(metadata) == "table" and metadata.server_confirmed_cooldown then
-        return true
+    if not DMLCD.IsJ3IntegrationEnabled() then
+        return false
     end
-
-    return false
+    local metadata = DMLCD.GetSpellMetadata(spellId)
+    return type(metadata) == "table" and metadata.server_confirmed_cooldown and true or false
 end
 
 function DMLCD.NormalizeSpellIcon(icon)
@@ -1323,16 +1409,12 @@ function DMLCD.ShouldSecureCastById(spellId, resolved)
         end
     end
 
-    -- Metadata received from ALE may define an additional rank even when it is
-    -- not present in DMLCustomSpells.lua.
-    if DB and type(DB.spellMetadata) == "table" then
-        for otherId, otherDefinition in pairs(DB.spellMetadata) do
-            if tonumber(otherId) ~= spellId
-                and type(otherDefinition) == "table"
-                and otherDefinition.family == family
-            then
-                return true
-            end
+    if DMLCD.IsJ3IntegrationEnabled() then
+        local provider = DMLCD.GetOptionalIntegration("J3Spells")
+        if provider and provider.HasOtherSpellInFamily and
+            provider:HasOtherSpellInFamily(spellId, family)
+        then
+            return true
         end
     end
 
@@ -2101,13 +2183,6 @@ local function GetCooldownKey(spellId)
     return tostring(tonumber(spellId) or spellId)
 end
 
-local function GetCooldownState(spellId)
-    if not DB or type(DB.cooldowns) ~= "table" then
-        return nil
-    end
-    return DB.cooldowns[GetCooldownKey(spellId)]
-end
-
 local function GetRemaining(state)
     if not state then
         return 0
@@ -2424,15 +2499,15 @@ local function ApplyCooldownVisual(button, state, forceTimer)
 end
 
 local function GetNativeCooldownState(assignment)
-    if not DB.nativeCooldowns or not assignment then
+    if not assignment then
         return nil
     end
 
-local kind = GetAssignmentKind(assignment)
+    local kind = GetAssignmentKind(assignment)
 
-if kind == "spell" and DMLCD.IsServerConfirmedCooldownOnly(assignment.spellId) then
-    return nil
-end
+    if kind == "spell" and DMLCD.IsServerConfirmedCooldownOnly(assignment.spellId) then
+        return nil
+    end
 
 local startTime, duration, enable
 
@@ -2542,10 +2617,13 @@ local function GetDisplayedCooldownState(assignment)
         return nil
     end
 
-    if GetAssignmentKind(assignment) == "spell" then
-        local customState = GetCooldownState(assignment.spellId)
-        if customState and GetRemaining(customState) > 0 then
-            return customState
+    if DMLCD.IsJ3IntegrationEnabled() then
+        local provider = DMLCD.GetOptionalIntegration("J3Spells")
+        if provider and provider.GetCooldownState then
+            local state = provider:GetCooldownState(assignment)
+            if state and GetRemaining(state) > 0 then
+                return state
+            end
         end
     end
 
@@ -2845,48 +2923,34 @@ local function ShowButtonTooltip(button)
             if not simple then
                 GameTooltip:AddLine("Spell ID " .. tostring(assignment.spellId), 0.75, 0.75, 0.75)
             end
-            GameTooltip:AddLine("This spell is not present in the client Spell.dbc. The addon can show its server timer, but the button cannot securely cast it.", 1, 0.35, 0.35, true)
+            GameTooltip:AddLine("This spell is not present in the client Spell.dbc. DML can display optional integration timers, but the button cannot securely cast an unknown client spell.", 1, 0.35, 0.35, true)
         end
 
         if spell and spell.customText and spell.customText ~= "" then
             GameTooltip:AddLine(spell.customText, 1, 0.82, 0.2, true)
         end
 
-        local scalingSpellId = tonumber(
-            (spell and spell.spellId) or assignment.spellId
-        )
-        local bonusDamage =
-            scalingSpellId and
-            DMLCD.scalingBonusDamage and
-            DMLCD.scalingBonusDamage[scalingSpellId]
-        local extraManaCost =
-            scalingSpellId and
-            DMLCD.scalingManaCost and
-            DMLCD.scalingManaCost[scalingSpellId]
-        local scalingParts = {}
-
-        if bonusDamage and bonusDamage > 0 then
-            table.insert(
-                scalingParts,
-                "+" .. tostring(bonusDamage) .. " bonus damage"
-            )
-        end
-
-        if extraManaCost and extraManaCost > 0 then
-            table.insert(
-                scalingParts,
-                "+" .. tostring(extraManaCost) .. " mana cost"
-            )
-        end
-
-        if #scalingParts > 0 then
-            GameTooltip:AddLine(
-                "Level scaling: " .. table.concat(scalingParts, ", "),
-                1,
-                0.82,
-                0.2,
-                true
-            )
+        if DMLCD.IsJ3IntegrationEnabled() then
+            local provider = DMLCD.GetOptionalIntegration("J3Spells")
+            if provider then
+                local scalingSpellId = tonumber((spell and spell.spellId) or assignment.spellId)
+                local bonusDamage = provider.GetSpellBonusDamage and
+                    tonumber(provider:GetSpellBonusDamage(scalingSpellId)) or 0
+                local extraManaCost = provider.GetSpellScalingManaCost and
+                    tonumber(provider:GetSpellScalingManaCost(scalingSpellId)) or 0
+                local scalingText
+                if bonusDamage > 0 and extraManaCost > 0 then
+                    scalingText = "+" .. tostring(bonusDamage) .. " bonus damage, +" ..
+                        tostring(extraManaCost) .. " mana cost"
+                elseif bonusDamage > 0 then
+                    scalingText = "+" .. tostring(bonusDamage) .. " bonus damage"
+                elseif extraManaCost > 0 then
+                    scalingText = "+" .. tostring(extraManaCost) .. " mana cost"
+                end
+                if scalingText then
+                    GameTooltip:AddLine("Level scaling: " .. scalingText, 1, 0.82, 0.2, true)
+                end
+            end
         end
 
         if spell and spell.rankText and spell.rankText ~= "" then
@@ -2906,8 +2970,7 @@ local function ShowButtonTooltip(button)
 
         if not simple then
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("DML cooldown tracking", 0.4, 1, 0.6)
-            GameTooltip:AddLine("Fallback: " .. tostring(assignment.fallback or 0) .. " seconds", 0.8, 0.8, 0.8)
+            GameTooltip:AddLine(DMLCD.IsJ3IntegrationEnabled() and "DML cooldown tracking (J3 enabled)" or "DML native cooldown", 0.4, 1, 0.6)
             if state and remaining > 0 then
                 GameTooltip:AddLine("Source: " .. tostring(state.source or "unknown"), 0.8, 0.8, 0.8)
             end
@@ -3070,6 +3133,8 @@ local function RefreshAllButtons()
         DMLCD.RefreshPetBar()
     end
 end
+
+DMLCD.RefreshAllButtons = RefreshAllButtons
 
 function DMLCD.RefreshItemAssignmentEntry(index, button)
     local assignment = DMLCD.GetAssignmentForIndex(index)
@@ -3775,72 +3840,6 @@ local function PickupAssignedAction(assignment)
     return false
 end
 
-local function StartCooldown(spellId, durationSeconds, token, spellName, source)
-    spellId = tonumber(spellId)
-    durationSeconds = tonumber(durationSeconds)
-    if not spellId or not durationSeconds or durationSeconds <= 0 then
-        return false
-    end
-
-    local nowMono = GetTime()
-    local key = GetCooldownKey(spellId)
-    local state = {
-        spellId = spellId,
-        spellName = spellName,
-        duration = durationSeconds,
-        token = tostring(token or ""),
-        source = source or "ALE",
-        startedAt = time(),
-        expiresAt = time() + math.ceil(durationSeconds),
-        startMono = nowMono,
-        sessionExpires = nowMono + durationSeconds
-    }
-
-    DB.cooldowns[key] = state
-    DMLCD.RememberCooldownDuration(spellId, durationSeconds)
-
-    ForEachActiveButton(function(index, button)
-        local assignment = DMLCD.GetAssignmentForIndex(index)
-        if button and assignment and GetAssignmentKind(assignment) == "spell" and tonumber(assignment.spellId) == spellId then
-            ApplyCooldownVisual(button, state)
-        end
-    end)
-
-    if DB.showMessages or DB.debugMessages then
-        local spell = ResolveSpell(spellId, spellName)
-        local name = spell and spell.name or spellName or ("Spell " .. tostring(spellId))
-        Print(name .. " cooldown started: " .. FormatRemaining(durationSeconds) .. ".")
-    end
-
-    return true
-end
-
-local function ClearCooldown(spellId, announce, suppliedName)
-    spellId = tonumber(spellId)
-    if not spellId then
-        return false
-    end
-
-    local key = GetCooldownKey(spellId)
-    local oldState = DB.cooldowns[key]
-    DB.cooldowns[key] = nil
-
-    ForEachActiveButton(function(index, button)
-        local assignment = DMLCD.GetAssignmentForIndex(index)
-        if button and assignment and GetAssignmentKind(assignment) == "spell" and tonumber(assignment.spellId) == spellId then
-            ClearCooldownVisual(button)
-        end
-    end)
-
-    if announce and (DB.showReadyMessages or DB.debugMessages) then
-        local spell = ResolveSpell(spellId, suppliedName or (oldState and oldState.spellName))
-        local name = spell and spell.name or suppliedName or (oldState and oldState.spellName) or ("Spell " .. tostring(spellId))
-        Print(name .. " is ready.")
-    end
-
-    return oldState ~= nil
-end
-
 local function BuildSpellbookSnapshot()
     local snapshot = {}
     if not GetNumSpellTabs or not GetSpellTabInfo or not GetSpellLink then
@@ -3954,6 +3953,34 @@ local function AutoAssignLearnedSpell(spellId, suppliedName)
     return assigned
 end
 
+DMLCD.AutoAssignLearnedSpell = AutoAssignLearnedSpell
+
+function DMLCD.RefreshSpellAssignment(spellId)
+    spellId = tonumber(spellId)
+    if not spellId then
+        return
+    end
+    ForEachActiveButton(function(index, button)
+        local assignment = DMLCD.GetAssignmentForIndex(index)
+        if button and assignment and GetAssignmentKind(assignment) == "spell" and
+            tonumber(assignment.spellId) == spellId
+        then
+            UpdateButton(button)
+            if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then
+                ShowButtonTooltip(button)
+            end
+        end
+    end)
+end
+
+function DMLCD.GetRemainingCooldownState(state)
+    return GetRemaining(state)
+end
+
+function DMLCD.RememberIntegrationCooldownDuration(spellId, duration)
+    DMLCD.RememberCooldownDuration(spellId, duration)
+end
+
 local function PrimeSpellbookSnapshot()
     knownSpellbookSpells = BuildSpellbookSnapshot()
     spellbookSnapshotReady = true
@@ -3997,289 +4024,6 @@ local function ProcessPendingLearnedSpells()
     end
 end
 
-local function HandleStart(spellId, cooldownMs, token, spellName)
-    spellId = tonumber(spellId)
-    cooldownMs = tonumber(cooldownMs)
-
-    if not spellId or not cooldownMs or cooldownMs <= 0 then
-        return
-    end
-
-    local durationSeconds = cooldownMs / 1000
-
-    -- Cooldown START messages no longer create bar assignments. Auto-assign
-    -- happens when the client reports that the player learned the spell.
-    StartCooldown(spellId, durationSeconds, token, spellName, "ALE")
-
-    -- Cancel any click fallback waiting for this spell.
-    ForEachActiveButton(function(index)
-        local assignment = DMLCD.GetAssignmentForIndex(index)
-        if assignment and GetAssignmentKind(assignment) == "spell" and tonumber(assignment.spellId) == spellId then
-            pendingFallbacks[index] = nil
-        end
-    end)
-end
-
-local function HandleReady(spellId, token, spellName)
-    spellId = tonumber(spellId)
-    if not spellId then
-        return
-    end
-
-    local state = GetCooldownState(spellId)
-    if not state then
-        return
-    end
-
-    if tostring(state.token or "") ~= tostring(token or "") then
-        -- Stale READY message from an older cast; ignore it.
-        return
-    end
-
-    ClearCooldown(spellId, true, spellName)
-end
-
-local function HandleCooldownUpdate(spellId, cooldownMs, spellName)
-    spellId = tonumber(spellId)
-    cooldownMs = tonumber(cooldownMs)
-
-    if not spellId or not cooldownMs then
-        return
-    end
-
-    if cooldownMs <= 0 then
-        ClearCooldown(spellId, false, spellName)
-        DMLCD.RefreshSpellAssignment(spellId)
-        return
-    end
-
-    local durationSeconds = cooldownMs / 1000
-
-    -- Lua-managed cooldowns send the *remaining* cooldown after every update.
-    -- Restart the visual timer from now with that remaining duration.
-    StartCooldown(
-        spellId,
-        durationSeconds,
-        "lua-managed",
-        spellName,
-        "ALE Lua"
-    )
-
-    DMLCD.RefreshSpellAssignment(spellId)
-end
-
-function DMLCD.SplitProtocolFields(message)
-    local fields = {}
-    local startAt = 1
-    while true do
-        local separator = string.find(message, "|", startAt, true)
-        if not separator then
-            table.insert(fields, string.sub(message, startAt))
-            break
-        end
-        table.insert(fields, string.sub(message, startAt, separator - 1))
-        startAt = separator + 1
-    end
-    return fields
-end
-
-function DMLCD.StoreSpellBonusDamage(spellId, bonusDamage)
-    spellId = tonumber(spellId)
-    bonusDamage = tonumber(bonusDamage)
-
-    if not spellId or not bonusDamage then
-        return false
-    end
-
-    DMLCD.scalingBonusDamage = DMLCD.scalingBonusDamage or {}
-    if bonusDamage > 0 then
-        DMLCD.scalingBonusDamage[spellId] = math.floor(bonusDamage + 0.5)
-    else
-        DMLCD.scalingBonusDamage[spellId] = nil
-    end
-    return true
-end
-
-function DMLCD.GetSpellBonusDamage(spellId)
-    spellId = tonumber(spellId)
-    if not spellId or type(DMLCD.scalingBonusDamage) ~= "table" then
-        return 0
-    end
-
-    return tonumber(DMLCD.scalingBonusDamage[spellId]) or 0
-end
-
-function DMLCD.StoreSpellScalingManaCost(spellId, extraManaCost)
-    spellId = tonumber(spellId)
-    extraManaCost = tonumber(extraManaCost)
-
-    if not spellId or not extraManaCost then
-        return false
-    end
-
-    DMLCD.scalingManaCost = DMLCD.scalingManaCost or {}
-    if extraManaCost > 0 then
-        DMLCD.scalingManaCost[spellId] = math.floor(extraManaCost + 0.5)
-    else
-        DMLCD.scalingManaCost[spellId] = nil
-    end
-    return true
-end
-
-function DMLCD.GetSpellScalingManaCost(spellId)
-    spellId = tonumber(spellId)
-    if not spellId or type(DMLCD.scalingManaCost) ~= "table" then
-        return 0
-    end
-
-    return tonumber(DMLCD.scalingManaCost[spellId]) or 0
-end
-
-function DMLCD.StoreSpellMetadata(spellId, spellName, rank, customText, family)
-    spellId = tonumber(spellId)
-    if not spellId or not DB then
-        return false
-    end
-
-    DB.spellMetadata = DB.spellMetadata or {}
-    local key = tostring(spellId)
-    local metadata = DB.spellMetadata[key] or {}
-
-    if spellName and spellName ~= "" then
-        metadata.name = spellName
-    end
-    if rank and rank ~= "" then
-        metadata.rank = tonumber(rank) or rank
-    end
-    if customText and customText ~= "" then
-        metadata.custom_text = customText
-    end
-    if family and family ~= "" then
-        metadata.family = family
-    end
-
-    DB.spellMetadata[key] = metadata
-    return true
-end
-
-function DMLCD.RefreshSpellAssignment(spellId)
-    spellId = tonumber(spellId)
-    if not spellId then
-        return
-    end
-
-    ForEachActiveButton(function(index, button)
-        local assignment = DMLCD.GetAssignmentForIndex(index)
-        if button and assignment and GetAssignmentKind(assignment) == "spell" and
-            tonumber(assignment.spellId) == spellId
-        then
-            UpdateButton(button)
-
-            if GameTooltip and GameTooltip.IsOwned and GameTooltip:IsOwned(button) then
-                ShowButtonTooltip(button)
-            end
-        end
-    end)
-end
-
-function DMLCD:ParseProtocolMessage(message)
-    if type(message) ~= "string" or string.sub(message, 1, string.len(CHAT_PREFIX)) ~= CHAT_PREFIX then
-        return false
-    end
-
-    local fields = DMLCD.SplitProtocolFields(message)
-    local action = fields[2]
-    local spellId = fields[3]
-    local cooldownMs = fields[4]
-    local token = fields[5]
-    local spellName = fields[6] or ""
-    local rank = fields[7]
-    local customText = fields[8]
-    local family = fields[9]
-
-    if not action then
-        return true
-    end
-
-if action == "START" then
-    DMLCD.StoreSpellMetadata(spellId, spellName, rank, customText, family)
-    DMLCD.RefreshSpellAssignment(spellId)
-    HandleStart(spellId, cooldownMs, token, spellName)
-elseif action == "READY" then
-    DMLCD.StoreSpellMetadata(spellId, spellName, rank, customText, family)
-    DMLCD.RefreshSpellAssignment(spellId)
-    HandleReady(spellId, token, spellName)
-elseif action == "COOLDOWN" then
-    HandleCooldownUpdate(spellId, cooldownMs, spellName)
-elseif action == "RESET" then
-    ClearCooldown(spellId, false, spellName)
-    DMLCD.RefreshSpellAssignment(spellId)
-elseif action == "LEARN" then
-        DMLCD.StoreSpellMetadata(spellId, spellName, rank, customText, family)
-        AutoAssignLearnedSpell(spellId, spellName)
-    elseif action == "META" then
-        DMLCD.StoreSpellMetadata(spellId, spellName, rank, customText, family)
-        DMLCD.RefreshSpellAssignment(spellId)
-    elseif action == "BONUS" then
-        if DMLCD.StoreSpellBonusDamage(spellId, cooldownMs) then
-            DMLCD.RefreshSpellAssignment(spellId)
-        end
-    elseif action == "MANA" then
-        if DMLCD.StoreSpellScalingManaCost(spellId, cooldownMs) then
-            DMLCD.RefreshSpellAssignment(spellId)
-        end
-    end
-
-    return true
-end
-
-local function ChatMessageFilter(_, _, message)
-    if type(message) == "string" and string.sub(message, 1, string.len(CHAT_PREFIX)) == CHAT_PREFIX then
-        return true
-    end
-    return false
-end
-
-local function InstallChatFilter()
-    if chatFilterInstalled then
-        return
-    end
-
-    if ChatFrame_AddMessageEventFilter then
-        ChatFrame_AddMessageEventFilter("CHAT_MSG_SYSTEM", ChatMessageFilter)
-        chatFilterInstalled = true
-    end
-end
-
-local function QueueClickFallback(button)
-    if not DB.clickFallback or not button or not button.dmlIndex then
-        return
-    end
-
-    local assignment = DMLCD.GetAssignmentForIndex(button.dmlIndex)
-if not assignment or GetAssignmentKind(assignment) ~= "spell" then
-    return
-end
-
-if DMLCD.IsServerConfirmedCooldownOnly(assignment.spellId) then
-    return
-end
-
-if GetCooldownState(assignment.spellId) then
-    return
-end
-
-    local fallback = tonumber(assignment.fallback) or 0
-    if fallback <= 0 then
-        return
-    end
-
-    pendingFallbacks[button.dmlIndex] = {
-        spellId = tonumber(assignment.spellId),
-        due = GetTime() + DB.fallbackDelay,
-        duration = fallback
-    }
-end
 
 local function HandleActionDrop(button)
     if keybindMode then
@@ -4687,7 +4431,13 @@ local function CreateButton(index, parentBar, barIndex, slotIndex)
         end
 
         if mouseButton == "LeftButton" or mouseButton == "RightButton" then
-            QueueClickFallback(self)
+            if DMLCD.IsJ3IntegrationEnabled() then
+                local provider = DMLCD.GetOptionalIntegration("J3Spells")
+                local assignment = DMLCD.GetAssignmentForIndex(self.dmlIndex)
+                if provider and provider.OnButtonClick then
+                    provider:OnButtonClick(self, assignment, mouseButton)
+                end
+            end
         end
     end)
 
@@ -6029,6 +5779,13 @@ local function CreateUpdateFrame()
 
         DMLCD.ProcessItemInfoRecovery(now)
 
+        if DMLCD.IsJ3IntegrationEnabled() then
+            local provider = DMLCD.GetOptionalIntegration("J3Spells")
+            if provider and provider.OnUpdate then
+                provider:OnUpdate(now)
+            end
+        end
+
         if blizzardBarRefreshDue and now >= blizzardBarRefreshDue then
             if IsInCombat() then
                 pendingBlizzardBarRefresh = true
@@ -6042,39 +5799,6 @@ local function CreateUpdateFrame()
             DMLCD.RefreshBarOneStancePage()
         end
 
-        local index, pending
-        for index, pending in pairs(pendingFallbacks) do
-            if now >= pending.due then
-                pendingFallbacks[index] = nil
-                local assignment = DMLCD.GetAssignmentForIndex(index)
-                if assignment
-                    and tonumber(assignment.spellId) == tonumber(pending.spellId)
-                    and not GetCooldownState(pending.spellId)
-                then
-                    StartCooldown(
-                        pending.spellId,
-                        pending.duration,
-                        "M" .. tostring(math.floor(now * 1000)),
-                        assignment.name,
-                        "manual fallback"
-                    )
-                end
-            end
-        end
-
-        local expired = DMLCD.ClearScratchTable(DMLCD.updateExpiredCooldowns)
-        local key, state
-        for key, state in pairs(DB.cooldowns) do
-            local remaining = GetRemaining(state)
-            if remaining <= 0 then
-                expired[#expired + 1] = tonumber(state.spellId) or tonumber(key)
-            end
-        end
-
-        local i
-        for i = 1, #expired do
-            ClearCooldown(expired[i], true, nil)
-        end
 
         DMLCD.ClearScratchTable(DMLCD.updateResourceCache)
         DMLCD.ClearScratchTable(DMLCD.updateRangeCache)
@@ -6597,6 +6321,7 @@ local function CreateCheckField(parent, key, labelText, x, y)
     local label = check:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("LEFT", check, "RIGHT", 2, 0)
     label:SetText(labelText)
+    check.dmlLabel = label
     configControls[key] = check
     return check
 end
@@ -6933,20 +6658,29 @@ RefreshConfigFields = function()
         DMLCD.ConfigSelectedBar,
         true
     )
-    configControls.fallbackDelay:SetText(tostring(DB.fallbackDelay))
-
     configControls.locked:SetChecked(DB.locked and 1 or nil)
     configControls.shown:SetChecked(DB.shown and 1 or nil)
     configControls.background:SetChecked(DB.background and 1 or nil)
     configControls.showSlotNumbers:SetChecked(DB.showSlotNumbers and 1 or nil)
     configControls.autoAssign:SetChecked(DB.autoAssign and 1 or nil)
-    configControls.clickFallback:SetChecked(DB.clickFallback and 1 or nil)
-    configControls.nativeCooldowns:SetChecked(DB.nativeCooldowns and 1 or nil)
+    if configControls.j3SpellsIntegration then
+        local available = DMLCD.IsJ3IntegrationAvailable()
+        configControls.j3SpellsIntegration:SetChecked(available and DB.j3SpellsIntegration and 1 or nil)
+        if available then
+            configControls.j3SpellsIntegration:Enable()
+            if configControls.j3SpellsIntegration.dmlLabel then
+                configControls.j3SpellsIntegration.dmlLabel:SetTextColor(1, 0.82, 0)
+            end
+        else
+            configControls.j3SpellsIntegration:Disable()
+            if configControls.j3SpellsIntegration.dmlLabel then
+                configControls.j3SpellsIntegration.dmlLabel:SetTextColor(0.5, 0.5, 0.5)
+            end
+        end
+    end
     configControls.resourceFade:SetChecked(DB.resourceFade and 1 or nil)
     DMLCD.SetRangeFinderDropdownValue(configControls.rangeFinder, DB.rangeFinder)
     configControls.simpleTooltips:SetChecked(DB.simpleTooltips and 1 or nil)
-    configControls.showMessages:SetChecked(DB.showMessages and 1 or nil)
-    configControls.showReadyMessages:SetChecked(DB.showReadyMessages and 1 or nil)
     configControls.debugMessages:SetChecked(DB.debugMessages and 1 or nil)
     configControls.showMinimapButton:SetChecked(DB.showMinimapButton and 1 or nil)
     configControls.hideGryphons:SetChecked(DB.hideGryphons and 1 or nil)
@@ -6973,11 +6707,6 @@ local function ApplyConfigSettings()
     end
 
     local barCount = math.floor(Clamp(configControls.barCount.selectedValue, 1, MAX_BARS) or 1)
-    local fallbackDelay = Clamp(configControls.fallbackDelay:GetText(), 0, 5)
-    if not fallbackDelay then
-        Print("Config contains an invalid fallback delay.")
-        return false
-    end
 
     DB.barSettings = type(DB.barSettings) == "table" and DB.barSettings or {}
     local barIndex
@@ -6998,22 +6727,18 @@ local function ApplyConfigSettings()
 
     DB.barCount = barCount
     DMLCD.SyncLegacyBarSettings()
-    DB.fallbackDelay = fallbackDelay
-
     DB.locked = configControls.locked:GetChecked() and true or false
     DB.shown = configControls.shown:GetChecked() and true or false
     DB.background = configControls.background:GetChecked() and true or false
     DB.showSlotNumbers = configControls.showSlotNumbers:GetChecked() and true or false
     DB.autoAssign = configControls.autoAssign:GetChecked() and true or false
-    DB.clickFallback = configControls.clickFallback:GetChecked() and true or false
-    DB.nativeCooldowns = configControls.nativeCooldowns:GetChecked() and true or false
+    local requestedJ3 = configControls.j3SpellsIntegration and
+        configControls.j3SpellsIntegration:GetChecked() and true or false
     DB.resourceFade = configControls.resourceFade:GetChecked() and true or false
     DB.rangeFinder = DMLCD.NormalizeRangeFinderMode(
         configControls.rangeFinder.selectedValue or DB.rangeFinder
     )
     DB.simpleTooltips = configControls.simpleTooltips:GetChecked() and true or false
-    DB.showMessages = configControls.showMessages:GetChecked() and true or false
-    DB.showReadyMessages = configControls.showReadyMessages:GetChecked() and true or false
     DB.debugMessages = configControls.debugMessages:GetChecked() and true or false
     DB.showMinimapButton = configControls.showMinimapButton:GetChecked() and true or false
     DB.hideGryphons = configControls.hideGryphons:GetChecked() and true or false
@@ -7023,6 +6748,7 @@ local function ApplyConfigSettings()
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
     DB.barLockKey = configControls.barLockKey.selectedValue or DB.barLockKey or "SHIFT"
     DB.blizzardBarMode = configControls.blizzardBarMode.selectedValue or DB.blizzardBarMode or "SHOW"
+    DMLCD.SetJ3IntegrationEnabled(requestedJ3, true)
 
     LayoutButtons()
     SetShown(DB.shown)
@@ -7045,6 +6771,7 @@ local function ResetFromConfig()
     end
 
     CopyDefaults(true)
+    DMLCD.SetJ3IntegrationEnabled(false, true)
     pendingFallbacks = {}
     RestoreAllPositions()
     if DMLCD.RestorePetBarPosition then
@@ -7134,30 +6861,26 @@ local function CreateConfigFrame()
     CreateEditField(configFrame, "buttonSize", "Button size", 40, -232, 70)
     CreateEditField(configFrame, "spacingX", "Horizontal gap", 40, -262, 70)
     CreateEditField(configFrame, "spacingY", "Vertical gap", 40, -292, 70)
-    CreateEditField(configFrame, "fallbackDelay", "Fallback delay", 40, -322, 70)
-    CreateCheckField(configFrame, "showSlotNumbers", "Show slot numbers", 40, -362)
-    CreateBlizzardBarDropdown(configFrame, 28, -397)
-    CreateCheckField(configFrame, "hideGryphons", "Hide gryphons", 40, -437)
-    CreateCheckField(configFrame, "useDMLAuraBar", "Use DML aura bar", 185, -437)
-    CreateCheckField(configFrame, "showAnchors", "Show anchors", 40, -467)
-    CreateCheckField(configFrame, "useDMLPetBar", "Use DML pet bar", 185, -467)
-    CreateCheckField(configFrame, "simpleTooltips", "Simple tooltips", 40, -497)
-    CreateCheckField(configFrame, "useBar1AsStanceBar", "Use bar 1 as stance bar", 185, -497)
+    CreateCheckField(configFrame, "showSlotNumbers", "Show slot numbers", 40, -322)
+    CreateBlizzardBarDropdown(configFrame, 28, -357)
+    CreateCheckField(configFrame, "hideGryphons", "Hide gryphons", 40, -397)
+    CreateCheckField(configFrame, "useDMLAuraBar", "Use DML aura bar", 185, -397)
+    CreateCheckField(configFrame, "showAnchors", "Show anchors", 40, -427)
+    CreateCheckField(configFrame, "useDMLPetBar", "Use DML pet bar", 185, -427)
+    CreateCheckField(configFrame, "simpleTooltips", "Simple tooltips", 40, -457)
+    CreateCheckField(configFrame, "useBar1AsStanceBar", "Use bar 1 as stance bar", 185, -457)
 
     CreateLabel(configFrame, "Behavior", 375, -55)
     CreateCheckField(configFrame, "shown", "Show bars", 385, -82)
     CreateCheckField(configFrame, "locked", "Lock bars", 385, -112)
     CreateCheckField(configFrame, "background", "Background", 385, -142)
     CreateCheckField(configFrame, "autoAssign", "Auto-assign learned spells", 385, -172)
-    CreateCheckField(configFrame, "nativeCooldowns", "Normal spell/item cooldowns", 385, -202)
-    CreateCheckField(configFrame, "clickFallback", "Click fallback (ALE backup)", 385, -232)
-    CreateCheckField(configFrame, "showMessages", "Show cooldown messages", 385, -262)
-    CreateCheckField(configFrame, "showReadyMessages", "Show spell ready messages", 385, -292)
-    CreateCheckField(configFrame, "showMinimapButton", "Show minimap button", 385, -322)
-    CreateCheckField(configFrame, "debugMessages", "Addon debug messages", 385, -352)
-    CreateCheckField(configFrame, "resourceFade", "Fade when resource is low", 385, -382)
-    DMLCD.CreateRangeFinderDropdown(configFrame, 375, -417)
-    CreateBarLockKeyDropdown(configFrame, 375, -457)
+    CreateCheckField(configFrame, "j3SpellsIntegration", "J3Spells Lua (use with j3spells module only)", 385, -202)
+    CreateCheckField(configFrame, "showMinimapButton", "Show minimap button", 385, -232)
+    CreateCheckField(configFrame, "debugMessages", "Addon debug messages", 385, -262)
+    CreateCheckField(configFrame, "resourceFade", "Fade when resource is low", 385, -292)
+    DMLCD.CreateRangeFinderDropdown(configFrame, 375, -327)
+    CreateBarLockKeyDropdown(configFrame, 375, -367)
 
     CreateLabel(configFrame, "Profiles", 28, -520)
     CreateLabel(configFrame, "Profile name", 40, -550)
@@ -7393,6 +7116,12 @@ local function ApplyProfileSnapshotNow(snapshot, label, profileNameAfterLoad)
         FinishKeybindMode(false, "DML keybind changes canceled before loading the layout.")
     end
 
+    -- Server integration is environment/runtime state, not profile layout data.
+    local preservedJ3Integration = DB.j3SpellsIntegration and true or false
+    local preservedJ3Cooldowns = DeepCopy(DB.j3Cooldowns or {})
+    local preservedJ3Metadata = DeepCopy(DB.j3SpellMetadata or {})
+    local preservedJ3Settings = DeepCopy(DB.j3Settings or {})
+
     local key
     for key in pairs(DB) do
         DB[key] = nil
@@ -7402,10 +7131,17 @@ local function ApplyProfileSnapshotNow(snapshot, label, profileNameAfterLoad)
     end
 
     DB.version = defaults.version
-    DB.cooldowns = {}
     pendingFallbacks = {}
     activeAssignmentDrag = nil
     CopyDefaults(false)
+    DB.j3SpellsIntegration = preservedJ3Integration
+    DB.j3Cooldowns = preservedJ3Cooldowns
+    DB.j3SpellMetadata = preservedJ3Metadata
+    DB.j3Settings = preservedJ3Settings
+    if not DMLCD.IsJ3IntegrationAvailable() then
+        DMLCD.TryLoadJ3Integration()
+    end
+    DMLCD.SetJ3IntegrationEnabled(DB.j3SpellsIntegration, true)
 
     LayoutButtons()
     RestoreAllPositions()
@@ -7531,30 +7267,6 @@ local function CreateMinimapButton()
     UpdateMinimapButtonVisibility()
 end
 
-local function RestoreCooldowns()
-    local expired = {}
-    local key, state
-
-    for key, state in pairs(DB.cooldowns) do
-        if type(state) ~= "table" or not state.expiresAt or not state.spellId then
-            table.insert(expired, key)
-        else
-            local remaining = state.expiresAt - time()
-            if remaining <= 0 then
-                table.insert(expired, key)
-            else
-                state.sessionExpires = GetTime() + remaining
-                state.startMono = state.sessionExpires - (tonumber(state.duration) or remaining)
-            end
-        end
-    end
-
-    local i
-    for i = 1, #expired do
-        DB.cooldowns[expired[i]] = nil
-    end
-end
-
 SetShown = function(shown)
     DB.shown = shown and true or false
     local barIndex
@@ -7588,20 +7300,17 @@ local function PrintHelp()
     Print("/dmlcd slotnumbers on|off | barlockkey shift|ctrl|alt|none | minimap on|off")
     Print("/dmlcd blizzardbar show|all|action|background | hidegryphons on|off")
     Print("/dmlcd anchors on|off  (DML aura/pet bar options are available in Config)")
-    Print("/dmlcd assign <slot> <spellId> [fallbackSeconds]  (bar 1)")
-    Print("/dmlcd assignbar <bar> <slot> <spellId> [fallbackSeconds]")
+    Print("/dmlcd assign <slot> <spellId>  (bar 1)")
+    Print("/dmlcd assignbar <bar> <slot> <spellId>")
     Print("/dmlcd assignitem <slot> <itemId> | assignitembar <bar> <slot> <itemId>")
     Print("/dmlcd clear <slot> | clearbar <bar> <slot> | clearall | autoassign on|off")
-    Print("Auto-assign watches newly learned active spells; cooldown START messages do not create slots.")
-    Print("/dmlcd messages on|off | readymessages on|off | debug on|off")
-    Print("/dmlcd clickfallback on|off | nativecooldowns on|off | resourcefade on|off")
-    Print("/dmlcd fallbackdelay <0-5>")
+    Print("Auto-assign watches newly learned active spells. Cooldowns are always read from normal client APIs.")
+    Print("/dmlcd debug on|off | resourcefade on|off")
     Print("/dmlcd kb | keybind | kb save | kb cancel")
     Print("/dmlcd profile save|load|delete <name> | profile list")
     Print("/dmlcd profile copy <name>")
-    Print("/dmlcd testlearn <spellId> | testmeta <spellId> <rank> [custom text]")
-    Print("/dmlcd teststart <spellId> <seconds> [token]")
-    Print("/dmlcd testready <spellId> [token] | status | reset")
+    Print("/dmlcd testlearn <spellId>")
+    Print("/dmlcd status | reset")
     Print("Unlocked: drag spells/items normally. Locked: the selected modifier can be pressed before or after pickup.")
 end
 
@@ -7650,13 +7359,10 @@ local function HandleSlash(message)
         Print(
             "Locked: " .. tostring(DB.locked) .. " (drag modifier: " .. GetBarLockKeyLabel() ..
             "), anchors: " .. tostring(DB.showAnchors) .. ", slot numbers: " .. tostring(DB.showSlotNumbers) .. ", autoassign: " ..
-            tostring(DB.autoAssign) .. ", click fallback: " .. tostring(DB.clickFallback) ..
-            ", normal spell/item cooldowns: " .. tostring(DB.nativeCooldowns) ..
-            ", resource fade: " .. tostring(DB.resourceFade) .. "."
+            tostring(DB.autoAssign) .. ", native cooldowns: always on, resource fade: " .. tostring(DB.resourceFade) .. "."
         )
         Print(
-            "Cooldown messages: " .. tostring(DB.showMessages) .. ", ready messages: " ..
-            tostring(DB.showReadyMessages) .. ", debug messages: " .. tostring(DB.debugMessages) ..
+            "Debug messages: " .. tostring(DB.debugMessages) ..
             ", minimap button: " .. tostring(DB.showMinimapButton) .. "."
         )
         Print(
@@ -8116,30 +7822,6 @@ local function HandleSlash(message)
         DB.autoAssign = value
         Print("Auto-assign learned spells " .. (value and "enabled." or "disabled."))
         return
-    elseif command == "messages" or command == "cooldownmessages" or command == "showmessages" then
-        local value = ParseOnOff(args[2])
-        if value == nil then
-            Print("Usage: /dmlcd messages on|off")
-            return
-        end
-        DB.showMessages = value
-        if RefreshConfigFields then
-            RefreshConfigFields()
-        end
-        Print("Cooldown messages " .. (value and "enabled." or "disabled."))
-        return
-    elseif command == "readymessages" or command == "showreadymessages" or command == "readytext" then
-        local value = ParseOnOff(args[2])
-        if value == nil then
-            Print("Usage: /dmlcd readymessages on|off")
-            return
-        end
-        DB.showReadyMessages = value
-        if RefreshConfigFields then
-            RefreshConfigFields()
-        end
-        Print("Spell ready messages " .. (value and "enabled." or "disabled."))
-        return
     elseif command == "debug" or command == "debugmessages" then
         local value = ParseOnOff(args[2])
         if value == nil then
@@ -8166,38 +7848,6 @@ local function HandleSlash(message)
         SaveCharacterLayoutSnapshot()
         Print("Low-resource spell fading " .. (value and "enabled." or "disabled."))
         return
-    elseif command == "clickfallback" then
-        local value = ParseOnOff(args[2])
-        if value == nil then
-            Print("Usage: /dmlcd clickfallback on|off")
-            return
-        end
-        DB.clickFallback = value
-        Print("Click fallback " .. (value and "enabled." or "disabled."))
-        return
-    elseif command == "nativecooldowns" or command == "normalcooldowns" then
-        local value = ParseOnOff(args[2])
-        if value == nil then
-            Print("Usage: /dmlcd nativecooldowns on|off")
-            return
-        end
-        DB.nativeCooldowns = value
-        ForEachActiveButton(function(_, button)
-            if button then
-                UpdateButtonCooldownVisual(button, true)
-            end
-        end)
-        Print("Normal spell/item cooldown display " .. (value and "enabled." or "disabled."))
-        return
-    elseif command == "fallbackdelay" then
-        local value = Clamp(args[2], 0, 5)
-        if not value then
-            Print("Usage: /dmlcd fallbackdelay <0-5>")
-            return
-        end
-        DB.fallbackDelay = value
-        Print("Fallback delay set to " .. tostring(value) .. " seconds.")
-        return
     elseif command == "testlearn" then
         local spellId = tonumber(args[2])
         if not spellId then
@@ -8207,47 +7857,6 @@ local function HandleSlash(message)
         local spell = ResolveSpell(spellId, nil)
         local name = spell and spell.name or ("Spell " .. tostring(spellId))
         AutoAssignLearnedSpell(spellId, name)
-        return
-    elseif command == "testmeta" then
-        local spellId = tonumber(args[2])
-        local rank = args[3]
-        if not spellId or not rank then
-            Print("Usage: /dmlcd testmeta <spellId> <rank> [custom text]")
-            return
-        end
-        local text = #args >= 4 and table.concat(args, " ", 4) or ""
-        local spell = ResolveSpell(spellId, nil)
-        DMLCD.StoreSpellMetadata(spellId, spell and spell.name or ("Spell " .. tostring(spellId)), rank, text, spell and spell.family)
-        DMLCD.RefreshSpellAssignment(spellId)
-        Print("Stored test metadata for spell " .. tostring(spellId) .. ".")
-        return
-    elseif command == "teststart" then
-        local spellId = tonumber(args[2])
-        local seconds = tonumber(args[3])
-        local token = args[4] or "TEST1"
-        if not spellId or not seconds or seconds <= 0 then
-            Print("Usage: /dmlcd teststart <spellId> <seconds> [token]")
-            return
-        end
-        local spell = ResolveSpell(spellId, nil)
-        local name = spell and spell.name or ("Spell " .. tostring(spellId))
-        DMLCD:ParseProtocolMessage(
-            "DMLCD|START|" .. tostring(spellId) .. "|" .. tostring(math.floor(seconds * 1000)) .. "|" .. tostring(token) .. "|" .. name
-        )
-        return
-    elseif command == "testready" then
-        local spellId = tonumber(args[2])
-        if not spellId then
-            Print("Usage: /dmlcd testready <spellId> [token]")
-            return
-        end
-        local state = GetCooldownState(spellId)
-        local token = args[3] or (state and state.token) or "TEST1"
-        local spell = ResolveSpell(spellId, nil)
-        local name = spell and spell.name or ("Spell " .. tostring(spellId))
-        DMLCD:ParseProtocolMessage(
-            "DMLCD|READY|" .. tostring(spellId) .. "|0|" .. tostring(token) .. "|" .. name
-        )
         return
     elseif command == "reset" then
         if ConfigurationBlocked() then
@@ -8285,8 +7894,11 @@ end
 local function FinishInitialize()
     InitializeGlobalDB()
     CopyDefaults(false)
+    DMLCD.TryLoadJ3Integration()
+    if not DMLCD.IsJ3IntegrationAvailable() then
+        DB.j3SpellsIntegration = false
+    end
     DMLCD.InstallCompanionPickupHook()
-    RestoreCooldowns()
     EnsureBars()
     CreateUpdateFrame()
     CreateKeybindFrames()
@@ -8297,7 +7909,7 @@ local function FinishInitialize()
     SetShown(DB.shown)
     ApplySavedKeybinds()
     ApplyBlizzardBarSettings()
-    InstallChatFilter()
+    DMLCD.SetJ3IntegrationEnabled(DB.j3SpellsIntegration, true)
     SaveCharacterLayoutSnapshot()
     local defaultProfileName = EnsureDefaultCharacterProfile()
     if RefreshProfileControls then
@@ -8327,7 +7939,6 @@ end
 
 local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
-eventFrame:RegisterEvent("CHAT_MSG_SYSTEM")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
@@ -8378,10 +7989,7 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         return
     end
 
-    if event == "CHAT_MSG_SYSTEM" then
-        local message = ...
-        DMLCD:ParseProtocolMessage(message)
-    elseif event == "PLAYER_REGEN_ENABLED" then
+    if event == "PLAYER_REGEN_ENABLED" then
         ForEachActiveButton(function(_, button)
             UpdateCombatDropOverlay(button)
         end)

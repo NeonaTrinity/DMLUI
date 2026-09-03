@@ -13,8 +13,8 @@
 --   icon        = optional normal icon name or full texture path
 --   active_icon = optional override for a supported active form/stance/aura
 --   secure_cast_by_id = optional true/false override for exact-ID casting
---   server_confirmed_cooldown = optional true/false; when true, DML ignores native/fallback 
---   cooldowns and waits for ALE START/COOLDOWN/RESET
+--   server_confirmed_cooldown = optional true/false; used only when the optional
+--   J3Spells integration is enabled. Native mode ignores this field.
 --
 -- Example:
 --   [12345] = {

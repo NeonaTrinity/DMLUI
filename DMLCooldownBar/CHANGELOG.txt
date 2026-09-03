@@ -1,0 +1,18 @@
+DML Cooldown Bar 2.0.84
+
+- Unified the previous private-server and Native forks into one core addon.
+- Native WoW 3.3.5a cooldown APIs are always the core/default behavior.
+- Added optional DMLCooldownBar_J3Spells addon module.
+- Added config checkbox: J3Spells Lua (use with j3spells module only).
+- Checkbox is disabled when the optional J3 integration addon is unavailable.
+- J3 integration augments native cooldowns instead of globally replacing them.
+- Standard spells continue using normal native/server cooldowns in J3 mode.
+- J3 START/COOLDOWN timers override only spells for which J3 supplies timers.
+- server_confirmed_cooldown is honored only while J3 integration is enabled.
+- Moved DMLCD chat parsing/filtering, runtime server metadata, scaling values,
+  server timer state, and click-fallback compatibility into the optional module.
+- Added migration of old ALE/private-server SavedVariables into j3-prefixed
+  optional-module storage.
+- J3 integration state is not stored in named layout profiles.
+- Preserved all 2.0.83 bar, profile, macro, item, mount, pet, aura-bar,
+  proc-fading, item-query hardening, and Blizzard-bar fixes.

@@ -1,8 +1,8 @@
 ## Interface: 30300
 ## Title: DML Cooldown Bar
-## Notes: Configurable Blizzard-style spell, item, macro, mount, and companion-pet buttons with AzerothCore ALE cooldown support.
+## Notes: Universal configurable action bars for WoW 3.3.5a. Native cooldowns by default; optional J3Spells integration supported.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.83
+## Version: 2.0.84
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## SavedVariables: DMLCooldownBarGlobalDB
