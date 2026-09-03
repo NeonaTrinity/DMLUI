@@ -1,4 +1,4 @@
-DML COOLDOWN BAR 2.0.80
+DML COOLDOWN BAR 2.0.83
 World of Warcraft 3.3.5a / AzerothCore / ALE
 
 PURPOSE
