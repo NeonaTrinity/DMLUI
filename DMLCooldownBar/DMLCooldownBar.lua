@@ -25,7 +25,7 @@ DMLCD.itemInfoRecoveryDue = DMLCD.itemInfoRecoveryDue or {}
 DMLCD.itemInfoAssigned = DMLCD.itemInfoAssigned or {}
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.85"
+local ADDON_VERSION = "2.0.88"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -7060,7 +7060,11 @@ RefreshConfigFields = function()
     DMLCD.SetRangeFinderDropdownValue(configControls.rangeFinder, DB.rangeFinder)
     configControls.simpleTooltips:SetChecked(DB.simpleTooltips and 1 or nil)
     configControls.debugMessages:SetChecked(DB.debugMessages and 1 or nil)
-    configControls.showMinimapButton:SetChecked(DB.showMinimapButton and 1 or nil)
+    local showMinimapButton = DB.showMinimapButton and true or false
+    if DMLUI and DMLUI.IsMinimapButtonVisible then
+        showMinimapButton = DMLUI:IsMinimapButtonVisible()
+    end
+    configControls.showMinimapButton:SetChecked(showMinimapButton and 1 or nil)
     configControls.hideGryphons:SetChecked(DB.hideGryphons and 1 or nil)
     configControls.useDMLAuraBar:SetChecked(DB.useDMLAuraBar and 1 or nil)
     configControls.useDMLTotemBar:SetChecked(DB.useDMLTotemBar and 1 or nil)
@@ -7120,6 +7124,9 @@ local function ApplyConfigSettings()
     DB.simpleTooltips = configControls.simpleTooltips:GetChecked() and true or false
     DB.debugMessages = configControls.debugMessages:GetChecked() and true or false
     DB.showMinimapButton = configControls.showMinimapButton:GetChecked() and true or false
+    if DMLUI and DMLUI.SetMinimapButtonVisible then
+        DMLUI:SetMinimapButtonVisible(DB.showMinimapButton)
+    end
     DB.hideGryphons = configControls.hideGryphons:GetChecked() and true or false
     DB.useDMLAuraBar = configControls.useDMLAuraBar:GetChecked() and true or false
     DB.useDMLTotemBar = configControls.useDMLTotemBar:GetChecked() and true or false
@@ -7264,7 +7271,7 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "background", "Background", 385, -142)
     CreateCheckField(configFrame, "autoAssign", "Auto-assign learned spells", 385, -172)
     CreateCheckField(configFrame, "j3SpellsIntegration", "J3Spells Lua (use with j3spells module only)", 385, -202)
-    CreateCheckField(configFrame, "showMinimapButton", "Show minimap button", 385, -232)
+    CreateCheckField(configFrame, "showMinimapButton", "Show DMLUI minimap button", 385, -232)
     CreateCheckField(configFrame, "debugMessages", "Addon debug messages", 385, -262)
     CreateCheckField(configFrame, "resourceFade", "Fade when resource is low", 385, -292)
     DMLCD.CreateRangeFinderDropdown(configFrame, 375, -327)
@@ -7409,6 +7416,23 @@ local function CreateConfigFrame()
     configFrame:Hide()
 end
 
+function DMLCD.OpenConfig()
+    if not configFrame then
+        return false
+    end
+
+    if not configFrame:IsShown() then
+        SaveCharacterLayoutSnapshot()
+        EnsureDefaultCharacterProfile()
+        RefreshConfigFields()
+        if RefreshProfileControls then
+            RefreshProfileControls()
+        end
+        configFrame:Show()
+    end
+    return true
+end
+
 ShowConfigWindow = function()
     if not configFrame then
         return
@@ -7417,13 +7441,7 @@ ShowConfigWindow = function()
     if configFrame:IsShown() then
         configFrame:Hide()
     else
-        SaveCharacterLayoutSnapshot()
-        EnsureDefaultCharacterProfile()
-        RefreshConfigFields()
-        if RefreshProfileControls then
-            RefreshProfileControls()
-        end
-        configFrame:Show()
+        DMLCD.OpenConfig()
     end
 end
 
@@ -7482,6 +7500,15 @@ local function UpdateMinimapButtonFromCursor()
 end
 
 UpdateMinimapButtonVisibility = function()
+    -- DMLUI owns the shared minimap launcher when the core is installed.
+    -- Keep the legacy Action Bars minimap button only for standalone installs.
+    if DMLUI and DMLUI.SetMinimapButtonVisible then
+        if minimapButton then
+            minimapButton:Hide()
+        end
+        return
+    end
+
     if not minimapButton then
         return
     end
@@ -7584,6 +7611,11 @@ RequestProfileApply = function(snapshot, label, profileNameAfterLoad)
 end
 
 local function CreateMinimapButton()
+    -- DMLUI core supplies the single shared launcher icon. Preserve this
+    -- legacy button only so DMLCooldownBar can still run standalone.
+    if DMLUI and DMLUI.SetMinimapButtonVisible then
+        return
+    end
     if not Minimap then
         return
     end
@@ -8069,6 +8101,9 @@ local function HandleSlash(message)
             return
         end
         DB.showMinimapButton = value
+        if DMLUI and DMLUI.SetMinimapButtonVisible then
+            DMLUI:SetMinimapButtonVisible(value)
+        end
         UpdateMinimapButtonVisibility()
         if RefreshConfigFields then
             RefreshConfigFields()
@@ -8279,6 +8314,29 @@ local function RegisterSlashCommands()
     SlashCmdList["DMLCOOLDOWNBAR"] = HandleSlash
 end
 
+function DMLCD.RegisterWithDMLUI()
+    if not DMLUI or not DMLUI.RegisterModule then
+        return
+    end
+
+    -- Migrate the old Action Bars minimap preference into the shared DMLUI
+    -- launcher once, then let DMLUI own that setting independently of profiles.
+    local uiDB = DMLUI.GetDB and DMLUI:GetDB() or nil
+    if uiDB and not uiDB.actionBarsMinimapMigrated then
+        DMLUI:SetMinimapButtonVisible(DB.showMinimapButton ~= false)
+        uiDB.actionBarsMinimapMigrated = true
+    end
+
+    DMLUI:RegisterModule("ActionBars", {
+        name = "Action Bars",
+        version = ADDON_VERSION,
+        addonName = ADDON_NAME,
+        openConfig = function()
+            DMLCD.OpenConfig()
+        end
+    })
+end
+
 local function FinishInitialize()
     InitializeGlobalDB()
     CopyDefaults(false)
@@ -8291,6 +8349,7 @@ local function FinishInitialize()
     CreateUpdateFrame()
     CreateKeybindFrames()
     CreateConfigFrame()
+    DMLCD.RegisterWithDMLUI()
     CreateMinimapButton()
     RestoreAllPositions()
     LayoutButtons()

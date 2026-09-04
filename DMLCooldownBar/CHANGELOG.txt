@@ -1,3 +1,11 @@
+DMLUI / DML Cooldown Bar 2.0.88
+
+- Added DMLUI core module integration.
+- Action Bars registers with the DMLUI launcher when DMLUI is installed.
+- DMLUI owns the shared minimap launcher; the old Action Bars minimap button remains only as a standalone fallback.
+- The existing Action Bars configuration window is unchanged and opens directly from the DMLUI Action Bars button.
+- Existing Action Bars minimap visibility is migrated once into DMLUI settings.
+
 DML Cooldown Bar 2.0.85
 
 - Added item quantity / charge-use text to DML item buttons.

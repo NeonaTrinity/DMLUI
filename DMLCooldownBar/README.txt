@@ -1,4 +1,4 @@
-DML COOLDOWN BAR 2.0.85 - UNIVERSAL BUILD
+DMLUI - ACTION BARS 2.0.88 - UNIVERSAL MODULE
 
 2.0.85 shared bar updates
 -------------------------

@@ -1,10 +1,11 @@
 ## Interface: 30300
-## Title: DML Cooldown Bar
-## Notes: Universal configurable action bars for WoW 3.3.5a. Native cooldowns by default; optional J3Spells integration supported.
+## Title: DMLUI - Action Bars
+## Notes: DMLUI Action Bars module for WoW 3.3.5a. Native cooldowns by default; optional J3Spells integration supported.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.85
+## Version: 2.0.88
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
+## OptionalDeps: DMLUI_Core
 ## SavedVariables: DMLCooldownBarGlobalDB
 ## SavedVariablesPerCharacter: DMLCooldownBarDB
 

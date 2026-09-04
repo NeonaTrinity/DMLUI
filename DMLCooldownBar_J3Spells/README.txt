@@ -1,4 +1,4 @@
-DML Cooldown Bar - J3Spells Integration 2.0.85
+DMLUI - Action Bars - J3Spells Integration 2.0.88
 
 Optional companion addon for DMLCooldownBar. Install only for a WoW 3.3.5a
 server running the J3Spells/ALE DMLCD protocol.
