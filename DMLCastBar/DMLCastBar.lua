@@ -5,7 +5,7 @@
 DMLCastBar = DMLCastBar or {}
 local CB = DMLCastBar
 
-CB.VERSION = "2.0.101"
+CB.VERSION = "2.0.106"
 CB.WIDTH_MIN = 100
 CB.WIDTH_MAX = 800
 CB.HEIGHT_MIN = 10
@@ -92,13 +92,45 @@ local function InCombat()
     return InCombatLockdown and InCombatLockdown()
 end
 
+local function RestoreLocallyManagedStockCastBar()
+    local stock = _G.CastingBarFrame
+    if not stock or not stockState then return end
+
+    if stockState.showCastbar == nil then
+        stock.showCastbar = true
+    else
+        stock.showCastbar = stockState.showCastbar
+    end
+    if stock.SetAlpha then stock:SetAlpha(stockState.alpha or 1) end
+    if stock.EnableMouse and stockState.mouse ~= nil then
+        stock:EnableMouse(stockState.mouse and true or false)
+    end
+    if CastingBarFrame_UpdateIsShown then
+        CastingBarFrame_UpdateIsShown(stock)
+    elseif stock.showCastbar and (stock.casting or stock.channeling) then
+        stock:Show()
+    end
+    stockState = nil
+end
+
 local function SyncUnitFrames()
     if DMLUnitFrames and DMLUnitFrames.SetExternalPlayerCastBarActive then
+        -- If Unit Frames became available after this module had already hidden
+        -- Blizzard's cast bar itself, restore that locally-saved state before
+        -- handing ownership to Unit Frames.
+        RestoreLocallyManagedStockCastBar()
         DMLUnitFrames:SetExternalPlayerCastBarActive(DB and DB.enabled)
+        return true
     end
+    return false
 end
 
 local function ApplyStockCastBarVisibility()
+    -- When Unit Frames is loaded it owns the final Blizzard cast-bar visibility
+    -- decision, because it also exposes an independent "Hide Blizzard cast bar"
+    -- option. DML Cast Bar simply reports whether its replacement is active.
+    if SyncUnitFrames() then return end
+
     local stock = _G.CastingBarFrame
     if not stock then return end
 

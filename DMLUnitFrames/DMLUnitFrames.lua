@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.105"
+UF.VERSION = "2.0.106"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -113,9 +113,10 @@ UF.stockChildStates = {}
 UF.partyGroupMover = nil
 UF.partyGroupHandle = nil
 UF.externalPlayerCastBarActive = false
+UF.blizzardPlayerCastBarState = nil
 
 local defaults = {
-    version = 9,
+    version = 10,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -151,7 +152,9 @@ local defaults = {
     targetCastBarPosition = "BELOW",
     showTargetTargetCastBar = false,
     targetTargetCastBarPosition = "BELOW",
+    hideBlizzardCastBar = false,
     useClassColorNames = false,
+    useAlignmentColorNames = false,
     useClassColorClassText = false,
     useDragonPortraits = true,
     colors = {
@@ -305,7 +308,9 @@ local function CopyDefaults(reset)
     if DB.targetCastBarPosition ~= "ABOVE" then DB.targetCastBarPosition = "BELOW" end
     DB.showTargetTargetCastBar = DB.showTargetTargetCastBar and true or false
     if DB.targetTargetCastBarPosition ~= "ABOVE" then DB.targetTargetCastBarPosition = "BELOW" end
+    DB.hideBlizzardCastBar = DB.hideBlizzardCastBar and true or false
     DB.useClassColorNames = DB.useClassColorNames and true or false
+    DB.useAlignmentColorNames = DB.useAlignmentColorNames and true or false
     DB.useClassColorClassText = DB.useClassColorClassText and true or false
     DB.useDragonPortraits = DB.useDragonPortraits ~= false
     if type(DB.colors) ~= "table" then DB.colors = {} end
@@ -616,6 +621,55 @@ local function ApplyBlizzardFrameVisibility()
     end
 end
 
+local function ApplyBlizzardPlayerCastBarVisibility()
+    local stock = _G.CastingBarFrame
+    if not stock or not DB then return end
+
+    -- The standalone DML Cast Bar always replaces Blizzard's standalone
+    -- CastingBarFrame while it is active. Unit Frames may independently hide
+    -- Blizzard's bar when the player wants only the attached unit-frame bar.
+    -- Neither condition should ever disable DML's attached player cast bar.
+    local hidden = (UF.externalPlayerCastBarActive or DB.hideBlizzardCastBar) and true or false
+    local state = UF.blizzardPlayerCastBarState
+
+    if hidden then
+        if not state then
+            state = {
+                showCastbar = stock.showCastbar,
+                showCastbarWasNil = stock.showCastbar == nil,
+                alpha = stock.GetAlpha and stock:GetAlpha() or 1,
+                mouse = stock.IsMouseEnabled and stock:IsMouseEnabled() or nil
+            }
+            UF.blizzardPlayerCastBarState = state
+        end
+        stock.showCastbar = false
+        stock:Hide()
+        if stock.EnableMouse then stock:EnableMouse(false) end
+        return
+    end
+
+    if state then
+        if state.showCastbarWasNil then
+            stock.showCastbar = true
+        else
+            stock.showCastbar = state.showCastbar
+        end
+        if stock.SetAlpha then stock:SetAlpha(state.alpha or 1) end
+        if stock.EnableMouse and state.mouse ~= nil then
+            stock:EnableMouse(state.mouse and true or false)
+        end
+        UF.blizzardPlayerCastBarState = nil
+
+        -- Resync immediately when Blizzard's bar becomes available again,
+        -- including when a cast is already in progress.
+        if CastingBarFrame_UpdateIsShown then
+            CastingBarFrame_UpdateIsShown(stock)
+        elseif stock.showCastbar and (stock.casting or stock.channeling) then
+            stock:Show()
+        end
+    end
+end
+
 local function GetPowerValues(unit)
     if UnitPower and UnitPowerMax then
         return tonumber(UnitPower(unit)) or 0, tonumber(UnitPowerMax(unit)) or 0
@@ -686,13 +740,27 @@ end
 
 local function ApplyNameColor(frame, unit)
     if not frame or not frame.nameText then return end
-    if DB and DB.useClassColorNames then
-        local color = GetUnitClassColor(unit)
+
+    local isPlayer = UnitIsPlayer and UnitIsPlayer(unit)
+    if isPlayer then
+        if DB and DB.useClassColorNames then
+            local color = GetUnitClassColor(unit)
+            if color then
+                frame.nameText:SetTextColor(color.r or 1, color.g or 1, color.b or 1)
+                return
+            end
+        end
+    elseif DB and DB.useAlignmentColorNames and UnitReaction then
+        -- Wrath maps UnitReaction values directly through FACTION_BAR_COLORS:
+        -- hostile/hated red, unfriendly orange, neutral yellow, friendly+ green.
+        local reaction = UnitReaction(unit, "player")
+        local color = reaction and FACTION_BAR_COLORS and FACTION_BAR_COLORS[reaction]
         if color then
             frame.nameText:SetTextColor(color.r or 1, color.g or 1, color.b or 1)
             return
         end
     end
+
     local color = GetDBColor("name", defaults.colors.name)
     frame.nameText:SetTextColor(color.r or 1, color.g or 0.82, color.b or 0)
 end
@@ -1034,7 +1102,6 @@ end
 
 local function GetCastBarConfig(key)
     if key == "player" then
-        if UF.externalPlayerCastBarActive then return false, DB.playerCastBarPosition end
         return DB.showPlayerCastBar, DB.playerCastBarPosition
     end
     if key == "target" then return DB.showTargetCastBar, DB.targetCastBarPosition end
@@ -1379,6 +1446,7 @@ local function ApplyFrameActivation()
     end
 
     ApplyBlizzardFrameVisibility()
+    ApplyBlizzardPlayerCastBarVisibility()
     UpdateAllFrames()
     UpdateAllCastBars()
     UpdateDynamicStates()
@@ -2091,7 +2159,9 @@ local function RefreshConfig()
     configControls.showPlayerCastBar:SetChecked(DB.showPlayerCastBar and 1 or nil)
     configControls.showTargetCastBar:SetChecked(DB.showTargetCastBar and 1 or nil)
     configControls.showTargetTargetCastBar:SetChecked(DB.showTargetTargetCastBar and 1 or nil)
+    configControls.hideBlizzardCastBar:SetChecked(DB.hideBlizzardCastBar and 1 or nil)
     configControls.useClassColorNames:SetChecked(DB.useClassColorNames and 1 or nil)
+    configControls.useAlignmentColorNames:SetChecked(DB.useAlignmentColorNames and 1 or nil)
     configControls.useClassColorClassText:SetChecked(DB.useClassColorClassText and 1 or nil)
     configControls.useDragonPortraits:SetChecked(DB.useDragonPortraits and 1 or nil)
     RefreshColorControls()
@@ -2133,13 +2203,16 @@ local function ApplyConfig()
     DB.showPlayerCastBar = configControls.showPlayerCastBar:GetChecked() and true or false
     DB.showTargetCastBar = configControls.showTargetCastBar:GetChecked() and true or false
     DB.showTargetTargetCastBar = configControls.showTargetTargetCastBar:GetChecked() and true or false
+    DB.hideBlizzardCastBar = configControls.hideBlizzardCastBar:GetChecked() and true or false
     DB.useClassColorNames = configControls.useClassColorNames:GetChecked() and true or false
+    DB.useAlignmentColorNames = configControls.useAlignmentColorNames:GetChecked() and true or false
     DB.useClassColorClassText = configControls.useClassColorClassText:GetChecked() and true or false
     DB.useDragonPortraits = configControls.useDragonPortraits:GetChecked() and true or false
     if DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange then RebuildRangeSpellCache() end
 
     ApplyAllAggroBorderGeometry()
     ApplyFrameActivation()
+    ApplyBlizzardPlayerCastBarVisibility()
     UpdateAllCastBars()
     RefreshConfig()
     Print("Unit frame configuration applied.")
@@ -2230,7 +2303,7 @@ local function CreateConfigFrame()
 
     configFrame = CreateFrame("Frame", "DMLUIUnitFramesConfigFrame", UIParent)
     configFrame:SetWidth(850)
-    configFrame:SetHeight(810)
+    configFrame:SetHeight(840)
     configFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     configFrame:SetFrameStrata("DIALOG")
     configFrame:SetFrameLevel(100)
@@ -2381,7 +2454,8 @@ local function CreateConfigFrame()
 
     CreateCheckField(configFrame, "displayCombatIcon", "Display combat icon", 40, -660)
     CreateCheckField(configFrame, "useClassColorNames", "Use class color as name", 40, -690)
-    CreateCheckField(configFrame, "useDragonPortraits", "Use dragon portraits", 40, -720)
+    CreateCheckField(configFrame, "useAlignmentColorNames", "Use alignment color for name", 40, -720)
+    CreateCheckField(configFrame, "useDragonPortraits", "Use dragon portraits", 40, -750)
 
     -- Column 2: display and party placement.
     local section2 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2537,6 +2611,7 @@ local function CreateConfigFrame()
     CreateCastBarRow("showPlayerCastBar", "Player cast bar", -625, "playerCastBarPosition")
     CreateCastBarRow("showTargetCastBar", "Target cast bar", -655, "targetCastBarPosition")
     CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -685, "targetTargetCastBarPosition")
+    CreateCheckField(configFrame, "hideBlizzardCastBar", "Hide Blizzard cast bar", 310, -720)
 
     -- Column 3: colors and range fading.
     local colorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2701,7 +2776,11 @@ end
 
 function UF:SetExternalPlayerCastBarActive(active)
     UF.externalPlayerCastBarActive = active and true or false
-    if initialized then UpdateCastBar("player") end
+    if initialized then ApplyBlizzardPlayerCastBarVisibility() end
+end
+
+function UF:RefreshBlizzardPlayerCastBarVisibility()
+    if initialized then ApplyBlizzardPlayerCastBarVisibility() end
 end
 
 function UF:OpenConfig()
@@ -2759,6 +2838,7 @@ eventFrame:RegisterEvent("UNIT_RUNIC_POWER")
 eventFrame:RegisterEvent("UNIT_DISPLAYPOWER")
 eventFrame:RegisterEvent("UNIT_LEVEL")
 eventFrame:RegisterEvent("UNIT_NAME_UPDATE")
+eventFrame:RegisterEvent("UNIT_FACTION")
 eventFrame:RegisterEvent("UNIT_PORTRAIT_UPDATE")
 eventFrame:RegisterEvent("UNIT_MODEL_CHANGED")
 eventFrame:RegisterEvent("PLAYER_FLAGS_CHANGED")
@@ -2787,6 +2867,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
         RebuildRangeSpellCache()
         UpdateAllFrames()
         ApplyBlizzardFrameVisibility()
+        ApplyBlizzardPlayerCastBarVisibility()
         ApplyPartyLayout()
         UpdateAllCastBars()
         UpdateDynamicStates()

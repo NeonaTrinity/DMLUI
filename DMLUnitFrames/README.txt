@@ -1,4 +1,11 @@
-DMLUI Unit Frames 2.0.105
+DMLUI Unit Frames 2.0.106
+
+New in 2.0.106:
+- Added "Use alignment color for name". Non-player units use Wrath reaction colors: hostile/hated red, unfriendly orange, neutral yellow, friendly-or-better green.
+- Player names remain independent: "Use class color as name" still affects player units only.
+- Standalone DML Cast Bar no longer disables the attached Player cast bar; both may be visible together.
+- Added "Hide Blizzard cast bar" under Attached cast bars. With standalone DML Cast Bar off, this independently hides or restores Blizzard's stock player cast bar.
+- When standalone DML Cast Bar is enabled, Blizzard's stock cast bar is always hidden while the attached Unit Frame player cast bar remains controlled only by its own checkbox.
 
 New in 2.0.105:
 - Mirrored the rare, rare-elite, elite, and world-boss dragon portrait ornament horizontally so its wing extends left instead of right.

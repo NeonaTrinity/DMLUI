@@ -2,7 +2,7 @@
 ## Title: DMLUI - Cast Bar
 ## Notes: Optional movable and customizable DMLUI player cast bar.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.101
+## Version: 2.0.106
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## Dependencies: DMLUI_Core

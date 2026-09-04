@@ -1,4 +1,4 @@
-# DMLUI 2.0.105
+# DMLUI 2.0.106
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -7,10 +7,21 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUI_Core/` - shared minimap launcher and module framework (2.0.100).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.105).
-- `DMLCastBar/` - optional movable/customizable player cast bar (2.0.101).
+- `DMLUnitFrames/` - Unit Frames module (2.0.106).
+- `DMLCastBar/` - optional movable/customizable player cast bar (2.0.106).
 
 
+
+## 2.0.106 highlights
+
+### Unit Frames
+- Added **Use alignment color for name** for non-player units using Wrath reaction colors (red hostile/hated, orange unfriendly, yellow neutral, green friendly+).
+- Added **Hide Blizzard cast bar** under Attached cast bars.
+- Attached Player cast bar is now independent from the standalone DML Cast Bar module.
+
+### Cast Bar
+- Enabling the standalone DML Cast Bar hides only Blizzard's stock player cast bar; it no longer disables the Unit Frames attached Player cast bar.
+- When Unit Frames is installed, the two modules coordinate Blizzard-bar visibility so the new Unit Frames hide option remains authoritative whenever the standalone DML Cast Bar is off.
 
 ## 2.0.105 highlights
 

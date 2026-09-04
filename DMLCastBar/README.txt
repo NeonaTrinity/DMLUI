@@ -1,4 +1,4 @@
-DMLUI - Cast Bar 2.0.101
+DMLUI - Cast Bar 2.0.106
 
 Optional standalone player cast-bar module for WoW 3.3.5a.
 
@@ -10,10 +10,15 @@ Features:
 - Bordered or borderless appearance.
 - Cast bar color using Blizzard's color picker.
 - Automatically hides Blizzard's stock player cast bar while enabled.
-- Automatically suppresses DMLUnitFrames' attached Player cast bar while enabled.
+- Can coexist with DMLUnitFrames' attached Player cast bar while enabled.
 
 Slash command: /dmlcast
 
+
+2.0.106 fix:
+- DML Cast Bar now suppresses only Blizzard's standalone CastingBarFrame, not DMLUnitFrames' attached Player cast bar.
+- When DMLUnitFrames is loaded, Unit Frames owns the final Blizzard cast-bar visibility state so its independent "Hide Blizzard cast bar" option continues to work when DML Cast Bar is disabled.
+- Without DMLUnitFrames installed, DML Cast Bar retains its standalone Blizzard-bar hide/restore behavior.
 
 2.0.101 fix:
 - Enabling DML Cast Bar now suppresses Blizzard's stock player CastingBarFrame using the stock 3.3.5 showCastbar flag plus an immediate Hide(), rather than alpha-only hiding.

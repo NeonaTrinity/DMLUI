@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.105 - test checklist
+DMLUI Unit Frames 2.0.106 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -23,12 +23,12 @@ REGRESSION
 [ ] Whole-frame scale still clamps to 0.50x-2.00x.
 [ ] Party grouped/freeform positioning still works.
 [ ] Attached cast bars still work.
-[ ] DMLCastBar interop still suppresses only the attached player cast bar when active.
+[ ] DMLCastBar interop leaves the attached Player cast bar independent when active.
 
 [ ] Player attached cast bar visibly fills during a normal cast.
 [ ] Target attached cast bar visibly fills while target casts.
 [ ] Target-of-target attached cast bar visibly fills when that unit casts.
-[ ] DMLCastBar custom player bar visibly fills and suppresses duplicate player cast bars when enabled.
+[ ] DMLCastBar custom player bar visibly fills and suppresses Blizzard's stock player cast bar when enabled, while the attached Player cast bar remains visible if its checkbox is enabled.
 
 
 2.0.100 display/color checks:
@@ -69,3 +69,17 @@ REGRESSION
 - The dragon wing/ornament extends to the LEFT of the portrait instead of the right.
 - Dragon art still sits correctly around both 2D and 3D portraits without covering the unit bars/text.
 - Combat icon layering remains above the portrait.
+
+
+2.0.106 alignment-name validation:
+- With Use alignment color for name OFF, non-player names use the configured Name color.
+- With it ON: hostile/hated NPC names are red, unfriendly NPC names orange, neutral NPC names yellow, and friendly-or-better NPC names green.
+- Player names are not reaction-colored; Use class color as name still independently controls player-name class coloring.
+- Changing target/faction/reaction refreshes the visible name color without /reload.
+
+2.0.106 cast-bar independence validation:
+- DML Cast Bar OFF + Hide Blizzard cast bar OFF + attached Player cast bar ON: Blizzard bar and attached Player bar both display.
+- DML Cast Bar OFF + Hide Blizzard cast bar ON + attached Player cast bar ON: only the attached Player bar displays.
+- DML Cast Bar ON + attached Player cast bar ON: DML standalone bar and attached Player bar both display; Blizzard bar stays hidden.
+- DML Cast Bar ON + attached Player cast bar OFF: only DML standalone bar displays; Blizzard bar stays hidden.
+- Turning DML Cast Bar back OFF restores Blizzard's bar unless Unit Frames Hide Blizzard cast bar remains checked.
