@@ -57,3 +57,8 @@ REGRESSION
 - Shapeshifting/transforming refreshes the 3D portrait through UNIT_MODEL_CHANGED.
 - Switching 2D -> 3D after a model change displays the current model.
 - Rare/elite ornament and combat icon remain above the 3D portrait.
+
+2.0.104 3D portrait camera validation:
+- 3D portrait uses the native Wrath camera 0 facial view: no full-body character should be visible in the portrait box.
+- Player, target, focus, pet, target-of-target, party, and party-pet 3D portraits show the unit face/head portrait when visible.
+- /reload, Alt-Z/UI hide-show, target changes, shapeshifts, and transformations retain/reapply the facial camera.

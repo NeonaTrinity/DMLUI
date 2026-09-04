@@ -7,8 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.103"
-UF.PORTRAIT_CAMERA_DISTANCE = 1.20
+UF.VERSION = "2.0.104"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -1132,11 +1131,16 @@ end
 local function Apply3DPortraitCamera(model)
     if not model then return end
 
-    -- SetPortraitZoom(1) selects the unit portrait/face camera. Back that
-    -- camera out slightly so DML shows the head and shoulders instead of an
-    -- extreme face crop, without falling back to the full-body model camera.
-    if model.SetPortraitZoom then model:SetPortraitZoom(1) end
-    if model.SetCamDistanceScale then model:SetCamDistanceScale(UF.PORTRAIT_CAMERA_DISTANCE) end
+    -- WoW 3.3.5a uses Model camera 0 as the dedicated facial portrait view.
+    -- Camera 1 is the frontal full-body view. Prefer the native Wrath camera
+    -- selector here instead of relying on the later SetPortraitZoom behavior.
+    if model.SetCamera then
+        model:SetCamera(0)
+    elseif model.SetPortraitZoom then
+        -- Compatibility fallback for clients where SetCamera is unavailable.
+        model:SetPortraitZoom(1)
+        if model.SetCamDistanceScale then model:SetCamDistanceScale(1) end
+    end
 end
 
 local function Show3DPortrait(frame, unit, forceRefresh)
@@ -1540,6 +1544,13 @@ local function CreateUnitFrame(key)
     portraitModel:SetHeight(metrics.portrait)
     portraitModel:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
     portraitModel:SetFrameLevel(frame:GetFrameLevel() + 1)
+    portraitModel:SetScript("OnShow", function(self)
+        -- The 3.3.5 client can restore a PlayerModel's default body camera
+        -- when the UI/model is hidden and shown again. Reassert portrait view.
+        if self.dmlPortraitBound then
+            Apply3DPortraitCamera(self)
+        end
+    end)
     portraitModel:Hide()
 
     -- Keep classification/combat artwork above the 3D model as well as the 2D texture.

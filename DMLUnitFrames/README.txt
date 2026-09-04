@@ -1,4 +1,9 @@
-DMLUI Unit Frames 2.0.103
+DMLUI Unit Frames 2.0.104
+
+New in 2.0.104:
+- Corrected 3D portraits for the actual WoW 3.3.5a model API: DML now selects Model camera 0, the native facial portrait camera, instead of trying to zoom the default full-body camera.
+- The facial camera is reapplied after each real model bind and when the PlayerModel is shown again, preventing hide/show cycles from leaving the portrait on the body camera.
+- Preserves the 2.0.103 GUID-cached model refresh and UNIT_MODEL_CHANGED handling.
 
 New in 2.0.103:
 - Fixed 3D portraits so PlayerModel uses the face/portrait camera with a slight camera-distance pullback for a head-and-shoulders crop instead of the full-body model.
