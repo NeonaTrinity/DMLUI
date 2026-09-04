@@ -1,4 +1,4 @@
-DMLUI - Quest Tracker 2.0.112
+DMLUI - Quest Tracker 2.0.113
 World of Warcraft 3.3.5a / Interface 30300
 
 Optional DMLUI quest tracker module.
@@ -22,3 +22,7 @@ Features:
 Slash commands:
 /dmlquest
 /dmlqt
+
+2.0.113
+- Added real-time quest-log watch synchronization by securely hooking AddQuestWatch and RemoveQuestWatch.
+- Manual track/untrack changes from Blizzard Quest Log now refresh DMLQuestTracker on the next UI frame without requiring DML interaction.

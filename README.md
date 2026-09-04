@@ -1,15 +1,36 @@
-# DMLUI 2.0.107
+# DMLUI 2.0.114
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
 ## Included modules
 
-- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.107).
+- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.114).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.106).
+- `DMLUnitFrames/` - Unit Frames module (2.0.114).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.106).
-- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.107).
+- `DMLBuffs/` - optional attached/detached aura and cleanse-highlighting module (2.0.114).
+- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.113).
+
+
+## 2.0.114 highlights
+
+### DML Buffs
+- New optional `DMLBuffs/` module and launcher entry.
+- Player, Target, Target-of-Target, and Party buffs/debuffs with compact attached presentation and mouseover expansion.
+- Player/Target/ToT aura groups attach to the portrait area or detach into independent movable/scalable DML anchors.
+- Above/Below placement keeps debuffs closest to the associated unit frame and buffs stacking outward.
+- Optional hiding of Blizzard player buffs while DML Buffs is enabled.
+- Optional friendly-player cleanse highlighting for Magic, Poison, Disease, and Curse with editable colors and Overlay/Border styles.
+- If several supported debuffs are active, the most recently applied effect determines the highlight color.
+
+### Unit Frames
+- Fine-tuned mirrored rare/elite dragon placement and size; the ornament scales with the complete unit frame.
+- Added **Use classic name banner** for reaction-colored Target/Focus/Target-of-Target name backgrounds, including hostile PvP players, independently from name-text color.
+- Added a portrait attachment point for the optional Buffs module without making Unit Frames depend on it.
+
+### DMLUI Core
+- Added the optional **Buffs** launcher entry; it is gray/disabled when `DMLBuffs/` is not installed.
 
 
 
@@ -113,6 +134,7 @@ Existing Unit Frames features remain available: player/target/focus/pet/target-o
 - `/dmlui` - DMLUI launcher.
 - `/dmluf` - Unit Frames settings.
 - `/dmlcast` - Cast Bar settings.
+- `/dmlbuffs` - Buffs settings.
 - `/dmlquest` or `/dmlqt` - Quest Tracker settings.
 
 

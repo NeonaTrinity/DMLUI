@@ -5,7 +5,7 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.112"
+QT.VERSION = "2.0.113"
 QT.WIDTH = 310
 QT.HEADER_HEIGHT = 24
 QT.QUEST_MIN_HEIGHT = 18
@@ -60,6 +60,8 @@ local configFrame
 local controls = {}
 local initialized = false
 local stockHookInstalled = false
+local watchMutationHooksInstalled = false
+local watchRefreshPending = false
 local refreshing = false
 local configRefreshing = false
 local PRINT_PREFIX = "|cff66ff99DMLUI Quest Tracker|r: "
@@ -333,6 +335,39 @@ local function RestoreBlizzardTracker()
         WatchFrame_Update(WatchFrame)
     end
     WatchFrame:Show()
+end
+
+local watchRefreshFrame = CreateFrame("Frame")
+watchRefreshFrame:Hide()
+watchRefreshFrame:SetScript("OnUpdate", function(self)
+    self:Hide()
+    watchRefreshPending = false
+
+    if not initialized or not DB or not DB.enabled then return end
+    HideBlizzardTracker()
+    QT:Refresh()
+end)
+
+local function ScheduleQuestWatchRefresh()
+    if watchRefreshPending then return end
+    watchRefreshPending = true
+    watchRefreshFrame:Show()
+end
+
+local function InstallQuestWatchMutationHooks()
+    if watchMutationHooksInstalled or not hooksecurefunc then return end
+
+    local installed = false
+    if AddQuestWatch then
+        hooksecurefunc("AddQuestWatch", ScheduleQuestWatchRefresh)
+        installed = true
+    end
+    if RemoveQuestWatch then
+        hooksecurefunc("RemoveQuestWatch", ScheduleQuestWatchRefresh)
+        installed = true
+    end
+
+    watchMutationHooksInstalled = installed
 end
 
 local function ApplyAppearance()
@@ -906,6 +941,7 @@ local function Initialize()
     CreateTrackerFrames()
     CreateConfigFrame()
     InstallStockWatchFrameHook()
+    InstallQuestWatchMutationHooks()
     RegisterWithCore()
     RegisterSlashCommand()
     initialized = true

@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.106 - test checklist
+DMLUI Unit Frames 2.0.114 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -83,3 +83,13 @@ REGRESSION
 - DML Cast Bar ON + attached Player cast bar ON: DML standalone bar and attached Player bar both display; Blizzard bar stays hidden.
 - DML Cast Bar ON + attached Player cast bar OFF: only DML standalone bar displays; Blizzard bar stays hidden.
 - Turning DML Cast Bar back OFF restores Blizzard's bar unless Unit Frames Hide Blizzard cast bar remains checked.
+
+
+2.0.114 dragon/classic-banner validation:
+- Rare/elite/world-boss dragon is centered better: slightly farther left, a tiny amount lower, and slightly larger than 2.0.113.
+- Dragon stays correctly aligned when the complete unit frame is scaled from 0.50x through 2.00x.
+- Use classic name banner OFF leaves the normal DML name-row background unchanged.
+- With it ON, hostile target/focus/ToT units get a red reaction banner, neutral units yellow, unfriendly units orange, and friendly units green.
+- Hostile PvP player targets receive the hostile reaction banner too.
+- Name text color remains independently controlled by class/alignment/custom name-color settings.
+- Installing/removing DMLBuffs does not break Unit Frames.

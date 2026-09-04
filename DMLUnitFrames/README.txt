@@ -1,4 +1,11 @@
-DMLUI Unit Frames 2.0.106
+DMLUI Unit Frames 2.0.114
+
+
+New in 2.0.114:
+- Fine-tuned rare/elite/world-boss dragon placement: slightly left, slightly down, and about 5% larger around the portrait.
+- Dragon art remains a child of the unit frame, so it scales naturally with the complete Unit Frame scale slider.
+- Added "Use classic name banner". Target, Focus, and Target-of-Target name-row backgrounds use reaction/hostility colors independently from name-text coloring, including hostile PvP players.
+- Added a small public portrait attachment API used by the optional DMLBuffs module; Unit Frames remains fully functional without DMLBuffs installed.
 
 New in 2.0.106:
 - Added "Use alignment color for name". Non-player units use Wrath reaction colors: hostile/hated red, unfriendly orange, neutral yellow, friendly-or-better green.

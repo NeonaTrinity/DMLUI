@@ -1,4 +1,4 @@
-DML Quest Tracker 2.0.112 - in-game checklist
+DML Quest Tracker 2.0.113 - in-game checklist
 
 [ ] Quest Tracker launcher entry opens DMLQuestTracker settings.
 [ ] With DMLQuestTracker folder removed, Quest Tracker launcher entry is grayed out.
@@ -27,3 +27,7 @@ DML Quest Tracker 2.0.112 - in-game checklist
 
 [ ] Dragging left/top/right/bottom is bounded by the 155 px anchor, not the 310 px tracker body/background.
 [ ] The anchor can sit flush against each screen edge while the tracker body is allowed to extend off-screen.
+
+[ ] Track a quest from Blizzard Quest Log: DML tracker adds it immediately without clicking DML.
+[ ] Untrack a quest from Blizzard Quest Log: DML tracker removes it immediately without clicking DML.
+[ ] Right-click a DML quest header still untracks it and refreshes immediately.

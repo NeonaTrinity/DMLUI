@@ -1,0 +1,22 @@
+DMLUI Buffs 2.0.114 - in-game checklist
+
+[ ] Launcher shows Buffs when DMLBuffs is installed.
+[ ] Launcher Buffs button is gray when the DMLBuffs folder is removed.
+[ ] Use DML Buffs OFF leaves Blizzard buffs and all DML aura frames unchanged/hidden.
+[ ] Player/Target/ToT attached aura rows are anchored to the portrait area and appear above/below correctly.
+[ ] Debuffs are always the row nearest the unit frame; buffs stack outward.
+[ ] Mouse over attached unit frame expands compact aura set; mouse leave collapses it.
+[ ] Detached Player/Target/ToT panels show expanded auras and their DML anchors.
+[ ] Detached panel scale works from 0.50x through 2.00x.
+[ ] Show Anchors / Lock aura frames work for detached panels.
+[ ] Hide Blizzard player buffs hides BuffFrame and temporary-enchant area only while Use DML Buffs is enabled.
+[ ] Party 1-4 auras use compact icons and expand on mouseover.
+[ ] Buff/debuff tooltips work.
+[ ] Stack counts and cooldown spirals update.
+[ ] Debuff icon borders use Blizzard DebuffTypeColor.
+[ ] Decurse Overlay highlights friendly player frames without blocking text/bars.
+[ ] Decurse Border draws outside the frame and can coexist with aggro border.
+[ ] Magic/Poison/Disease/Curse color pickers update highlights.
+[ ] When multiple supported debuffs are present, newest applied effect controls the highlight.
+[ ] Hostile target players are not treated as friendly cleanse targets.
+[ ] Module survives /reload with saved settings and positions.

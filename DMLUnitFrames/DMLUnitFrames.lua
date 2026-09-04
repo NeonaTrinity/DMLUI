@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.106"
+UF.VERSION = "2.0.114"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -116,7 +116,7 @@ UF.externalPlayerCastBarActive = false
 UF.blizzardPlayerCastBarState = nil
 
 local defaults = {
-    version = 10,
+    version = 11,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -155,6 +155,7 @@ local defaults = {
     hideBlizzardCastBar = false,
     useClassColorNames = false,
     useAlignmentColorNames = false,
+    useClassicNameBanner = false,
     useClassColorClassText = false,
     useDragonPortraits = true,
     colors = {
@@ -311,6 +312,7 @@ local function CopyDefaults(reset)
     DB.hideBlizzardCastBar = DB.hideBlizzardCastBar and true or false
     DB.useClassColorNames = DB.useClassColorNames and true or false
     DB.useAlignmentColorNames = DB.useAlignmentColorNames and true or false
+    DB.useClassicNameBanner = DB.useClassicNameBanner and true or false
     DB.useClassColorClassText = DB.useClassColorClassText and true or false
     DB.useDragonPortraits = DB.useDragonPortraits ~= false
     if type(DB.colors) ~= "table" then DB.colors = {} end
@@ -763,6 +765,32 @@ local function ApplyNameColor(frame, unit)
 
     local color = GetDBColor("name", defaults.colors.name)
     frame.nameText:SetTextColor(color.r or 1, color.g or 0.82, color.b or 0)
+end
+
+local function ApplyClassicNameBanner(frame, unit, key)
+    if not frame or not frame.nameBanner then return end
+
+    -- The classic-style banner is intentionally independent from name-text
+    -- coloring. This lets players combine a reaction-colored target banner
+    -- with class-colored or custom-colored name text. Target-like frames only:
+    -- player/party self frames keep their normal DML background.
+    local targetLike = key == "target" or key == "focus" or key == "targettarget"
+    if not DB or not DB.useClassicNameBanner or not targetLike or not UnitReaction then
+        frame.nameBanner:Hide()
+        return
+    end
+
+    -- UnitReaction works for NPCs and PvP players on Wrath. Enemy players
+    -- therefore receive the same hostile red banner as hostile creatures.
+    local reaction = UnitReaction(unit, "player")
+    local color = reaction and FACTION_BAR_COLORS and FACTION_BAR_COLORS[reaction]
+    if not color then
+        frame.nameBanner:Hide()
+        return
+    end
+
+    frame.nameBanner:SetVertexColor(color.r or 1, color.g or 1, color.b or 1, 0.72)
+    frame.nameBanner:Show()
 end
 
 local function UpdateClassCreatureText(frame, unit)
@@ -1292,6 +1320,7 @@ local function UpdateFrame(key, forcePortraitRefresh)
 
     frame.nameText:SetText(UnitName(unit) or definition.label)
     ApplyNameColor(frame, unit)
+    ApplyClassicNameBanner(frame, unit, key)
     local backgroundColor = GetDBColor("background", defaults.colors.background)
     frame:SetBackdropColor(backgroundColor.r, backgroundColor.g, backgroundColor.b, 0.92)
 
@@ -1607,6 +1636,17 @@ local function CreateUnitFrame(key)
     portrait:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
     portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+    -- Always-visible geometry anchor for optional modules such as DML Buffs.
+    -- It matches the portrait border but carries no artwork or mouse input, so
+    -- attached aura rows remain visible in 2D, 3D, class-icon, or hidden-model
+    -- portrait modes and automatically inherit the complete unit-frame scale.
+    local auraAnchor = CreateFrame("Frame", nil, frame)
+    auraAnchor:SetWidth(metrics.portraitBorder)
+    auraAnchor:SetHeight(metrics.portraitBorder)
+    auraAnchor:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
+    auraAnchor:SetFrameLevel(frame:GetFrameLevel() + 1)
+    auraAnchor:EnableMouse(false)
+
     local portraitModel = CreateFrame("PlayerModel", nil, frame)
     portraitModel:SetWidth(metrics.portrait)
     portraitModel:SetHeight(metrics.portrait)
@@ -1633,9 +1673,9 @@ local function CreateUnitFrame(key)
     -- then mirror that crop horizontally so its wing points left around the
     -- DML portrait instead of extending to the right.
     local classificationDragon = portraitOverlay:CreateTexture(nil, "OVERLAY")
-    classificationDragon:SetWidth(metrics.portraitBorder * 1.65)
-    classificationDragon:SetHeight(metrics.portraitBorder * 1.55)
-    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", -5, 0)
+    classificationDragon:SetWidth(metrics.portraitBorder * 1.74)
+    classificationDragon:SetHeight(metrics.portraitBorder * 1.63)
+    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", -8, -2)
     classificationDragon:SetTexCoord(1.0, 0.57, 0.0, 0.78)
     classificationDragon:Hide()
 
@@ -1649,6 +1689,17 @@ local function CreateUnitFrame(key)
         combatIcon:SetPoint("TOPRIGHT", portraitBorder, "TOPRIGHT", 3, 3)
         combatIcon:Hide()
     end
+
+    -- Optional classic-style reaction banner behind the name row. It is kept
+    -- separate from the frame backdrop and the name font color, so both can be
+    -- configured independently. As a child of the unit frame it naturally
+    -- inherits the complete Unit Frame scale.
+    local nameBanner = frame:CreateTexture(nil, "BACKGROUND")
+    nameBanner:SetTexture(1, 1, 1, 1)
+    nameBanner:SetWidth(metrics.barWidth + 2)
+    nameBanner:SetHeight(isParty and 16 or 20)
+    nameBanner:SetPoint("TOPLEFT", frame, "TOPLEFT", metrics.textX - 4, -3)
+    nameBanner:Hide()
 
     local nameText = frame:CreateFontString(nil, "OVERLAY", isParty and "GameFontNormalSmall" or "GameFontNormal")
     nameText:SetPoint("TOPLEFT", frame, "TOPLEFT", metrics.textX, metrics.nameY)
@@ -1797,8 +1848,10 @@ local function CreateUnitFrame(key)
     frame.portraitModel = portraitModel
     frame.portraitOverlay = portraitOverlay
     frame.portraitBorder = portraitBorder
+    frame.auraAnchor = auraAnchor
     frame.classificationDragon = classificationDragon
     frame.combatIcon = combatIcon
+    frame.nameBanner = nameBanner
     frame.nameText = nameText
     frame.levelText = levelText
     frame.levelSkull = levelSkull
@@ -2162,6 +2215,7 @@ local function RefreshConfig()
     configControls.hideBlizzardCastBar:SetChecked(DB.hideBlizzardCastBar and 1 or nil)
     configControls.useClassColorNames:SetChecked(DB.useClassColorNames and 1 or nil)
     configControls.useAlignmentColorNames:SetChecked(DB.useAlignmentColorNames and 1 or nil)
+    configControls.useClassicNameBanner:SetChecked(DB.useClassicNameBanner and 1 or nil)
     configControls.useClassColorClassText:SetChecked(DB.useClassColorClassText and 1 or nil)
     configControls.useDragonPortraits:SetChecked(DB.useDragonPortraits and 1 or nil)
     RefreshColorControls()
@@ -2206,6 +2260,7 @@ local function ApplyConfig()
     DB.hideBlizzardCastBar = configControls.hideBlizzardCastBar:GetChecked() and true or false
     DB.useClassColorNames = configControls.useClassColorNames:GetChecked() and true or false
     DB.useAlignmentColorNames = configControls.useAlignmentColorNames:GetChecked() and true or false
+    DB.useClassicNameBanner = configControls.useClassicNameBanner:GetChecked() and true or false
     DB.useClassColorClassText = configControls.useClassColorClassText:GetChecked() and true or false
     DB.useDragonPortraits = configControls.useDragonPortraits:GetChecked() and true or false
     if DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange then RebuildRangeSpellCache() end
@@ -2215,6 +2270,7 @@ local function ApplyConfig()
     ApplyBlizzardPlayerCastBarVisibility()
     UpdateAllCastBars()
     RefreshConfig()
+    if DMLBuffs and DMLBuffs.OnUnitFramesLayoutChanged then DMLBuffs:OnUnitFramesLayoutChanged() end
     Print("Unit frame configuration applied.")
     return true
 end
@@ -2295,6 +2351,7 @@ local function ResetDefaults()
     RestorePartyGroupPosition()
     ApplyFrameActivation()
     RefreshConfig()
+    if DMLBuffs and DMLBuffs.OnUnitFramesLayoutChanged then DMLBuffs:OnUnitFramesLayoutChanged() end
     Print("Unit frame settings reset to defaults.")
 end
 
@@ -2452,10 +2509,11 @@ local function CreateConfigFrame()
     configControls.aggroBorderSlider = aggroSlider
     configControls.aggroBorderEdit = aggroEdit
 
-    CreateCheckField(configFrame, "displayCombatIcon", "Display combat icon", 40, -660)
-    CreateCheckField(configFrame, "useClassColorNames", "Use class color as name", 40, -690)
-    CreateCheckField(configFrame, "useAlignmentColorNames", "Use alignment color for name", 40, -720)
-    CreateCheckField(configFrame, "useDragonPortraits", "Use dragon portraits", 40, -750)
+    CreateCheckField(configFrame, "displayCombatIcon", "Display combat icon", 40, -645)
+    CreateCheckField(configFrame, "useClassColorNames", "Use class color as name", 40, -670)
+    CreateCheckField(configFrame, "useAlignmentColorNames", "Use alignment color for name", 40, -695)
+    CreateCheckField(configFrame, "useClassicNameBanner", "Use classic name banner", 40, -720)
+    CreateCheckField(configFrame, "useDragonPortraits", "Use dragon portraits", 40, -745)
 
     -- Column 2: display and party placement.
     local section2 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2772,6 +2830,34 @@ local function CreateConfigFrame()
 
     table.insert(UISpecialFrames, "DMLUIUnitFramesConfigFrame")
     configFrame:Hide()
+end
+
+function UF:GetFrame(key)
+    return UF.frames and UF.frames[key] or nil
+end
+
+function UF:IsFrameActive(key)
+    local definition = GetDefinition(key)
+    return IsDefinitionEnabled(key, definition) and true or false
+end
+
+function UF:GetFrameForUnit(unit)
+    if not unit then return nil end
+    for key, definition in pairs(UF.definitions) do
+        if definition.unit == unit and IsDefinitionEnabled(key, definition) then
+            return UF.frames[key], key
+        end
+    end
+    return nil
+end
+
+-- Public portrait attachment point for optional aura modules. Returning a
+-- child of the DML unit frame means attached aura rows naturally inherit the
+-- frame's complete scale without coupling their behavior into Unit Frames.
+function UF:GetAuraAnchor(key)
+    local frame = UF.frames and UF.frames[key] or nil
+    if not frame then return nil end
+    return frame.auraAnchor or frame.portraitOverlay or frame
 end
 
 function UF:SetExternalPlayerCastBarActive(active)

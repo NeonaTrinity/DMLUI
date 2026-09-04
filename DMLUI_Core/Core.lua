@@ -8,11 +8,12 @@
 DMLUI = DMLUI or {}
 local UI = DMLUI
 
-UI.VERSION = "2.0.107"
+UI.VERSION = "2.0.114"
 UI.modules = UI.modules or {}
 UI.knownModules = UI.knownModules or {
     { key = "ActionBars", name = "Action Bars", order = 10 },
     { key = "UnitFrames", name = "Unit Frames", order = 20 },
+    { key = "Buffs", name = "Buffs", order = 25 },
     { key = "CastBars", name = "Cast Bars", order = 30 },
     { key = "QuestTracker", name = "Quest Tracker", order = 40 },
     { key = "Profiles", name = "Profiles", order = 50, core = true },
