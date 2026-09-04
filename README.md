@@ -1,4 +1,4 @@
-# DMLUI 2.0.104
+# DMLUI 2.0.105
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -7,9 +7,17 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUI_Core/` - shared minimap launcher and module framework (2.0.100).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.104).
+- `DMLUnitFrames/` - Unit Frames module (2.0.105).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.101).
 
+
+
+## 2.0.105 highlights
+
+### Unit Frames
+- Mirrored the rare/elite dragon portrait ornament horizontally so its wing points left rather than right.
+- Shifted the mirrored ornament slightly left for matching placement around the portrait.
+- The 2.0.104 Wrath facial-camera 3D portrait fix is unchanged.
 
 ## 2.0.104 highlights
 

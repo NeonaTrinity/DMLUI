@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.103 - test checklist
+DMLUI Unit Frames 2.0.105 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -62,3 +62,10 @@ REGRESSION
 - 3D portrait uses the native Wrath camera 0 facial view: no full-body character should be visible in the portrait box.
 - Player, target, focus, pet, target-of-target, party, and party-pet 3D portraits show the unit face/head portrait when visible.
 - /reload, Alt-Z/UI hide-show, target changes, shapeshifts, and transformations retain/reapply the facial camera.
+
+
+2.0.105 classification dragon validation:
+- Rare, rare-elite, elite, and world-boss dragon ornaments are horizontally mirrored.
+- The dragon wing/ornament extends to the LEFT of the portrait instead of the right.
+- Dragon art still sits correctly around both 2D and 3D portraits without covering the unit bars/text.
+- Combat icon layering remains above the portrait.

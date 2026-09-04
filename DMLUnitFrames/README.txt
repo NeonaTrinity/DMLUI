@@ -1,4 +1,9 @@
-DMLUI Unit Frames 2.0.104
+DMLUI Unit Frames 2.0.105
+
+New in 2.0.105:
+- Mirrored the rare, rare-elite, elite, and world-boss dragon portrait ornament horizontally so its wing extends left instead of right.
+- Shifted the mirrored ornament slightly left to preserve its intended placement around the portrait.
+- 3D portrait camera behavior from 2.0.104 is unchanged.
 
 New in 2.0.104:
 - Corrected 3D portraits for the actual WoW 3.3.5a model API: DML now selects Model camera 0, the native facial portrait camera, instead of trying to zoom the default full-body camera.

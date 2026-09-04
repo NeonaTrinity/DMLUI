@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.104"
+UF.VERSION = "2.0.105"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -1561,13 +1561,14 @@ local function CreateUnitFrame(key)
     portraitOverlay:SetFrameLevel(frame:GetFrameLevel() + 2)
 
     -- Blizzard's rare/elite target-frame textures contain the stock silver/gold
-    -- dragon ornament around the portrait area. Crop the right side so the
-    -- ornament can sit around DML's portrait without replacing the whole frame.
+    -- dragon ornament around the portrait area. Crop the right-side ornament,
+    -- then mirror that crop horizontally so its wing points left around the
+    -- DML portrait instead of extending to the right.
     local classificationDragon = portraitOverlay:CreateTexture(nil, "OVERLAY")
     classificationDragon:SetWidth(metrics.portraitBorder * 1.65)
     classificationDragon:SetHeight(metrics.portraitBorder * 1.55)
-    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", 5, 0)
-    classificationDragon:SetTexCoord(0.57, 1.0, 0.0, 0.78)
+    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", -5, 0)
+    classificationDragon:SetTexCoord(1.0, 0.57, 0.0, 0.78)
     classificationDragon:Hide()
 
     local combatIcon
