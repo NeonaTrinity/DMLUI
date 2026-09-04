@@ -1,59 +1,58 @@
-DMLUI Unit Frames 2.0.91 - test checklist
+DMLUI Unit Frames 2.0.92 - test checklist
 
-INSTALL / LAUNCHER
-- Install DMLUI_Core + DMLUnitFrames.
-- DMLUI minimap launcher shows Unit Frames as active.
-- Removing/disable DMLUnitFrames leaves Unit Frames button greyed out.
+BASE REGRESSION
+- Open DMLUI > Unit Frames.
+- Player/Target/Focus/Pet/Target of Target still enable independently.
+- Left click targets.
+- Right click opens the Blizzard-style unit popup menu.
+- Portrait scale selector and numeric entry still clamp from 0.02 to 30.00.
 
-SAFE DEFAULT
-- Fresh install leaves all Blizzard unit frames unchanged.
-- Open Unit Frames config; every DML replacement checkbox begins off.
+PARTY ENABLE / STOCK REPLACEMENT
+- Join a party with 1-4 other players.
+- Enable Use DML party frames and Apply.
+- Blizzard PartyMemberFrame1-4 should be hidden and DML party frames should appear for existing party units.
+- Disable Use DML party frames and Apply; Blizzard party frames should return.
 
-PLAYER
-- Enable Use DML player frame and Apply.
-- DML player frame appears and Blizzard PlayerFrame is visually hidden.
-- If DML pet frame is NOT enabled, Blizzard PetFrame remains visible and usable.
-- Portrait, name, level, class, health and resource update.
+PARTY PETS
+- With a party member pet active, enable Show party pets.
+- Verify partypet1-4 appear only when those units exist.
+- Disable Show party pets and Apply; DML party pets should hide.
 
-TARGET / TARGET OF TARGET
-- Enable Use DML target frame and Apply.
-- Targeting a unit shows the DML target frame; clearing target hides it.
-- If DML target-of-target is NOT enabled, the Blizzard TargetFrameToT remains available according to Blizzard's normal Target of Target setting.
-- Enable DML target-of-target; its DML frame follows targettarget.
+GROUPED MODE
+- Enable Move party frames as one anchor.
+- Show Anchors on, Lock Frames off.
+- Large DML Party Frames anchor appears above Party 1.
+- Drag it; all party members and pets move together.
+- Change Party spacing from 0 through larger values; party rows tighten/spread vertically.
+- Set Party pet position Right then Below; pets stay attached to their owner.
+- Individual + handles should not be active in grouped mode.
 
-FOCUS
-- Enable Use DML focus frame and set/clear focus.
-- DML focus frame follows the focus unit.
-- Blizzard FocusFrameToT remains available according to Blizzard behavior.
+FREEFORM MODE
+- Uncheck Move party frames as one anchor and Apply.
+- Large group anchor disappears.
+- Small + drag handles appear beside each party member and enabled party-pet portrait.
+- Move Party 1, Party 2, and individual pets independently.
+- Party spacing and Party pet position controls should be disabled and have no layout effect.
+- Switch back to grouped mode; previous grouped layout should return.
+- Switch back to freeform; previous individual positions should return.
 
-PET
-- Enable Use DML pet frame with a pet active.
-- DML pet frame follows pet health/resource/portrait and hides Blizzard PetFrame.
-- Dismiss/re-summon pet and confirm visibility updates.
+PARTY PORTRAIT SCALE
+- Select Party Members and change scale; all party member portraits change together.
+- Select Party Pets and change scale; all party pet portraits change together.
+- Individual Party 1-4 entries use the Party Members shared scale.
+- Individual Party Pet entries use the Party Pets shared scale.
 
-MOVEMENT
-- Show anchors + unlocked: enabled frame anchors are visible and draggable even when target/focus/pet unit does not currently exist.
-- Lock frames: anchors disappear and dragging is blocked.
-- Reset Positions returns all DML unit frame movers to defaults.
+RESET FRAME
+- Move/scale Player, select Player, click Reset Frame; Player returns to default position and portrait scale.
+- Move Party 2 in freeform, select Party 2, click Reset Frame; its saved freeform position returns to default.
+- Select Party Group, click Reset Frame; grouped anchor, spacing, and grouped pet placement return to defaults.
 
-DISPLAY
-- Toggle portrait, health text, resource text, level and class/creature type independently.
-- Right-click a DML unit frame opens the normal unit menu; left-click targets the unit.
+RESET ALL FRAMES
+- Customize several normal frames, grouped/freeform party positions, spacing, and portrait scales.
+- Click Reset All Frames.
+- All positions/scales should return to defaults.
+- Enabled replacement checkboxes must NOT change.
 
-COMBAT
-- Attempting to Apply enable/disable changes during combat is rejected rather than modifying protected frames.
-
-
-2.0.91 RIGHT-CLICK MENU
-- Enable DML Player Frame. Right-click it and confirm the normal SELF menu opens.
-- Enable DML Target Frame. Target a player and NPC; right-click and confirm the corresponding Blizzard menu opens.
-- Test Focus, Pet, and Target of Target right-click menus.
-- Confirm left-click still targets the unit.
-
-2.0.91 PORTRAIT SCALE
-- Open Unit Frames and use the bottom Frame dropdown in this order: Player, Target, Target of Target, Focus, Pet.
-- Move the portrait slider and confirm only the selected unit portrait changes size.
-- Type 1.25, press Enter, and confirm the slider/display and selected portrait update.
-- Type values below 0.02 and above 30; confirm they clamp to 0.02 and 30.0.
-- Set different values for two unit types, close/reopen options, and confirm each value persists independently.
-- /reload and confirm portrait scales persist.
+COMBAT SAFETY
+- Enter combat and try Apply / Reset Frame / Reset All Frames.
+- Protected layout changes should be blocked with a chat message rather than tainting or moving secure frames.

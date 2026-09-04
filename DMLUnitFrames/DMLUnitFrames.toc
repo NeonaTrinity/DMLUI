@@ -1,8 +1,8 @@
 ## Interface: 30300
 ## Title: DMLUI - Unit Frames
-## Notes: Movable DMLUI player, target, focus, pet, and target-of-target frames for WoW 3.3.5a.
+## Notes: Movable DMLUI player, target, focus, pet, target-of-target, party, and party-pet frames for WoW 3.3.5a.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.91
+## Version: 2.0.92
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## Dependencies: DMLUI_Core

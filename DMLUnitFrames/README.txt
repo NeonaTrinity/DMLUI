@@ -1,33 +1,57 @@
-DMLUI - Unit Frames 2.0.91
+DMLUI - Unit Frames 2.0.92
 
 Optional DMLUI module for WoW 3.3.5a.
-
 Install alongside DMLUI_Core. The Unit Frames button in the DMLUI launcher becomes active automatically.
 
-Initial supported frames:
+Supported frames:
 - Player
 - Target
 - Focus
 - Pet
 - Target of Target
+- Party 1-4
+- Party pets 1-4
 
-Installing the module does not replace Blizzard frames automatically. Enable the individual DML replacements in Unit Frames settings.
+Installing the module does not replace Blizzard frames automatically. Enable only the DML replacements you want.
 
-Current display controls:
-- Portrait
-- Health text
-- Resource text
-- Level
-- Class / creature type
-- Movable anchors
-- Frame locking
+Party controls:
+- Use DML party frames
+- Show party pets
+- Move party frames as one anchor
+- Party pet position: Right / Below (grouped mode)
+- Party spacing: 0-150 pixels (grouped mode)
 
+Grouped party mode:
+- One large DML Party Frames anchor moves all party members and pets together.
+- Vertical spacing applies to the managed stack.
+- Party pets stay attached to their owner at Right or Below.
+
+Freeform party mode:
+- Group anchor is disabled.
+- Each party member and pet has its own small drag handle beside the portrait.
+- Party spacing and grouped pet-position controls are disabled/ignored.
+- Freeform positions are saved separately from the grouped layout.
+
+Frame / portrait adjustment selector:
+- Player
+- Target
+- Target of Target
+- Focus
+- Pet
+- Party Members
+- Party Pets
+- Party Group
+- Party 1 / Party 1 Pet through Party 4 / Party 4 Pet
+
+Portrait scaling:
+- 0.02x through 30.00x with logarithmic slider movement.
+- Numeric entry is clamped to the same range.
+- Party members share one portrait scale; party pets share another.
+
+Reset controls:
+- Reset Frame: resets the currently selected frame/category to its default position and portrait scale where applicable.
+- Reset All Frames: resets all positions, party spacing/pet placement, and portrait scales without changing enabled-frame checkboxes.
+- Reset Settings: restores the full Unit Frames settings set to defaults.
+
+Unit frames keep left-click targeting and Blizzard-style right-click unit menus.
 Slash command: /dmluf
-
-2.0.91 additions:
-- Fixed right-click unit menus using Wrath 3.3.5 SecureUnitButton_OnLoad/menu behavior.
-- Player, Target, Focus, Pet, and Target of Target now open Blizzard-style unit popup menus.
-- Added a bottom Portrait scale section with a per-unit selector.
-- Each unit type stores its own portrait scale.
-- Slider range is logarithmic from 0.02x to 30.00x for fine normal-size control plus extreme small/large values.
-- Numeric scale entry is clamped to the same range and updates the selected portrait immediately.
