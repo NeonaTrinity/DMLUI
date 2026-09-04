@@ -1,0 +1,44 @@
+DMLUI Unit Frames 2.0.90 - test checklist
+
+INSTALL / LAUNCHER
+- Install DMLUI_Core + DMLUnitFrames.
+- DMLUI minimap launcher shows Unit Frames as active.
+- Removing/disable DMLUnitFrames leaves Unit Frames button greyed out.
+
+SAFE DEFAULT
+- Fresh install leaves all Blizzard unit frames unchanged.
+- Open Unit Frames config; every DML replacement checkbox begins off.
+
+PLAYER
+- Enable Use DML player frame and Apply.
+- DML player frame appears and Blizzard PlayerFrame is visually hidden.
+- If DML pet frame is NOT enabled, Blizzard PetFrame remains visible and usable.
+- Portrait, name, level, class, health and resource update.
+
+TARGET / TARGET OF TARGET
+- Enable Use DML target frame and Apply.
+- Targeting a unit shows the DML target frame; clearing target hides it.
+- If DML target-of-target is NOT enabled, the Blizzard TargetFrameToT remains available according to Blizzard's normal Target of Target setting.
+- Enable DML target-of-target; its DML frame follows targettarget.
+
+FOCUS
+- Enable Use DML focus frame and set/clear focus.
+- DML focus frame follows the focus unit.
+- Blizzard FocusFrameToT remains available according to Blizzard behavior.
+
+PET
+- Enable Use DML pet frame with a pet active.
+- DML pet frame follows pet health/resource/portrait and hides Blizzard PetFrame.
+- Dismiss/re-summon pet and confirm visibility updates.
+
+MOVEMENT
+- Show anchors + unlocked: enabled frame anchors are visible and draggable even when target/focus/pet unit does not currently exist.
+- Lock frames: anchors disappear and dragging is blocked.
+- Reset Positions returns all DML unit frame movers to defaults.
+
+DISPLAY
+- Toggle portrait, health text, resource text, level and class/creature type independently.
+- Right-click a DML unit frame opens the normal unit menu; left-click targets the unit.
+
+COMBAT
+- Attempting to Apply enable/disable changes during combat is rejected rather than modifying protected frames.

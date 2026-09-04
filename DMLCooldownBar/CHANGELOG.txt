@@ -1,3 +1,15 @@
+DMLUI / DML Cooldown Bar 2.0.90
+
+- Fixed the movable DML totem bar occasionally drifting vertically away from its background after Blizzard UI layout refreshes.
+- While Use DML totem bar is enabled, DML temporarily removes MultiCastActionBarFrame and MULTICASTACTIONBAR_YPOS from Blizzard's managed-frame table, sets the native frame to ignore the frame-position manager, and pins the native multicast Y offset to 0.
+- Disabling Use DML totem bar restores the previously captured Blizzard/other-addon managed-frame state and requests a normal UIParent position recalculation.
+- Assigned items with zero remaining quantity/uses now display an explicit 0 count while remaining faded.
+
+DMLUI / DML Cooldown Bar 2.0.89
+
+- Added Hide totem bar background under Fade when resource is low.
+- The option hides only the movable DML totem host backdrop/border; Blizzard's native totem icons, elemental selection flyouts, summon pages, and recall controls remain intact.
+
 DMLUI / DML Cooldown Bar 2.0.88
 
 - Added DMLUI core module integration.

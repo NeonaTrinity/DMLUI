@@ -1,4 +1,11 @@
-DMLUI - ACTION BARS 2.0.88 - UNIVERSAL MODULE
+DMLUI - ACTION BARS 2.0.90 - UNIVERSAL MODULE
+
+
+2.0.90 shared UI update
+-----------------------
+- Added Hide totem bar background directly below Fade when resource is low.
+  This hides the DML totem host backdrop while leaving Blizzard's native
+  MultiCast totem buttons/flyouts fully functional.
 
 2.0.85 shared bar updates
 -------------------------

@@ -1,4 +1,4 @@
-2.0.88 DMLUI CORE / LAUNCHER TESTS
+2.0.90 DMLUI CORE / LAUNCHER TESTS
 
 1. With DMLUI_Core + DMLCooldownBar installed, only one minimap icon should appear.
 2. Clicking the DMLUI minimap icon opens the DMLUI launcher.
@@ -9,7 +9,7 @@
 7. /dmlui opens the launcher; /dmlcd config still opens Action Bars directly.
 8. With DMLUI_Core folder removed, DMLCooldownBar retains its legacy standalone minimap button.
 
-DMLUI Action Bars 2.0.88 Universal - test checklist
+DMLUI Action Bars 2.0.90 Universal - test checklist
 
 NATIVE / PORTABLE
 [ ] Remove or disable DMLCooldownBar_J3Spells and /reload.
@@ -50,3 +50,17 @@ MIGRATION
 - Verify Reset Positions recenters the totem anchor.
 - Disable Use DML totem bar and verify Blizzard's totem bar returns to its original stock position.
 - Verify the above with J3 integration absent, installed but disabled, and enabled.
+
+
+2.0.90 TOTEM BACKGROUND
+- Enable Use DML totem bar and Background: DML totem host backdrop is visible.
+- Check Hide totem bar background and Apply: only native totem icons/controls remain; flyouts still open and selection still works.
+- Uncheck it and Apply: the DML totem host backdrop returns.
+2.0.90 TOTEM POSITION / ZERO-COUNT REGRESSION
+- Enable Use DML totem bar and place the DML host somewhere obvious.
+- Toggle bottom action bars, reputation/XP bar states where practical, reload UI, change zones, and summon/change totems; native totem icons must remain aligned to the DML host/background.
+- Disable Use DML totem bar and verify the native multicast frame returns to Blizzard's current stock position.
+- Re-enable the DML totem bar and verify movement/flyouts still work.
+- Put an item stack on a DML bar, consume/destroy the final item, and verify the assignment remains, the icon fades, and the count reads 0.
+- Reacquire the item and verify the count and normal opacity return.
+

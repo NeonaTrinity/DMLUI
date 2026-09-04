@@ -1,11 +1,11 @@
-DMLUI Core 2.0.88
+DMLUI Core 2.0.90
 =============
 
 DMLUI is the shared launcher/framework for modular WoW 3.3.5a UI addons.
 
 Current module slots:
 - Action Bars   -> provided by DMLCooldownBar
-- Unit Frames   -> planned DMLUnitFrames module
+- Unit Frames   -> provided by optional DMLUnitFrames module
 - Profiles      -> DMLUI core page; Action Bars profiles remain intact for now
 - Advanced      -> DMLUI core status/settings page
 - DML BigBag    -> planned bag module

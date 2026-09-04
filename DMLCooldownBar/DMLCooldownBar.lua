@@ -25,7 +25,7 @@ DMLCD.itemInfoRecoveryDue = DMLCD.itemInfoRecoveryDue or {}
 DMLCD.itemInfoAssigned = DMLCD.itemInfoAssigned or {}
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.88"
+local ADDON_VERSION = "2.0.90"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -81,6 +81,7 @@ local defaults = {
     autoAssign = true,
     j3SpellsIntegration = false,
     resourceFade = true,
+    hideTotemBarBackground = false,
     rangeFinder = "OFF",
     simpleTooltips = false,
     debugMessages = false,
@@ -740,6 +741,7 @@ local function CopyDefaults(reset)
     DB.j3SpellsIntegration = DB.j3SpellsIntegration and true or false
     DB.debugMessages = DB.debugMessages and true or false
     DB.hideGryphons = DB.hideGryphons and true or false
+    DB.hideTotemBarBackground = DB.hideTotemBarBackground and true or false
     DB.useDMLAuraBar = DB.useDMLAuraBar and true or false
     DB.useDMLTotemBar = DB.useDMLTotemBar and true or false
     DB.useDMLPetBar = DB.useDMLPetBar and true or false
@@ -1849,7 +1851,10 @@ function DMLCD.UpdateButtonItemCountVisual(button, assignment)
 
     if button.countText then
         local displayCount = useCount
-        if displayCount > 1 then
+        -- Mirror the normal action-button convention of hiding a lone "1",
+        -- but keep an explicit "0" visible for assigned items that are gone
+        -- or have exhausted all charges/uses. The icon is faded separately.
+        if displayCount <= 0 or displayCount > 1 then
             if displayCount > 9999 then
                 button.countText:SetText("*")
             else
@@ -4603,7 +4608,7 @@ local function ApplyBackground()
     end
 
     if DMLCD.totemBar then
-        if DB.background then
+        if DB.background and not DB.hideTotemBarBackground then
             DMLCD.totemBar:SetBackdropColor(0.04, 0.04, 0.04, 0.78)
             DMLCD.totemBar:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.9)
         else
@@ -5321,6 +5326,69 @@ function DMLCD.CaptureNativeTotemBarHome()
     }
 end
 
+-- Blizzard's 3.3.5 UIParent frame manager owns both the native multicast
+-- frame and MULTICASTACTIONBAR_YPOS. If either remains managed while DML has
+-- reparented the frame, UIParent can later raise the totem icons above our
+-- movable host after an action-bar/layout refresh. Capture the current state
+-- on each enable so we can restore it exactly when DML control is disabled.
+function DMLCD.CaptureNativeTotemManagerState()
+    local native = _G.MultiCastActionBarFrame
+    if not native or DMLCD.totemManagerHome then
+        return
+    end
+    local positions = _G.UIPARENT_MANAGED_FRAME_POSITIONS
+    DMLCD.totemManagerHome = {
+        frameEntry = positions and positions["MultiCastActionBarFrame"] or nil,
+        yVarEntry = positions and positions["MULTICASTACTIONBAR_YPOS"] or nil,
+        ignoreFramePositionManager = native.ignoreFramePositionManager,
+        xPos = _G.MULTICASTACTIONBAR_XPOS,
+        yPos = _G.MULTICASTACTIONBAR_YPOS
+    }
+end
+
+function DMLCD.IsolateNativeTotemBarFromFrameManager()
+    local native = _G.MultiCastActionBarFrame
+    if not native then
+        return
+    end
+    DMLCD.CaptureNativeTotemManagerState()
+    local positions = _G.UIPARENT_MANAGED_FRAME_POSITIONS
+    if positions then
+        positions["MultiCastActionBarFrame"] = nil
+        positions["MULTICASTACTIONBAR_YPOS"] = nil
+    end
+    native.ignoreFramePositionManager = true
+    _G.MULTICASTACTIONBAR_XPOS = DMLCD.TOTEM_NATIVE_X
+    _G.MULTICASTACTIONBAR_YPOS = 0
+end
+
+function DMLCD.RestoreNativeTotemManagerState()
+    local native = _G.MultiCastActionBarFrame
+    local home = DMLCD.totemManagerHome
+    if not native or not home then
+        return
+    end
+    local positions = _G.UIPARENT_MANAGED_FRAME_POSITIONS
+    if positions then
+        -- Only replace entries while they are still absent from DML's own
+        -- isolation. If another addon claimed either entry meanwhile, leave it.
+        if positions["MultiCastActionBarFrame"] == nil then
+            positions["MultiCastActionBarFrame"] = home.frameEntry
+        end
+        if positions["MULTICASTACTIONBAR_YPOS"] == nil then
+            positions["MULTICASTACTIONBAR_YPOS"] = home.yVarEntry
+        end
+    end
+    native.ignoreFramePositionManager = home.ignoreFramePositionManager
+    if home.xPos ~= nil then
+        _G.MULTICASTACTIONBAR_XPOS = home.xPos
+    end
+    if home.yPos ~= nil then
+        _G.MULTICASTACTIONBAR_YPOS = home.yPos
+    end
+    DMLCD.totemManagerHome = nil
+end
+
 function DMLCD.AttachNativeTotemBar()
     local native = _G.MultiCastActionBarFrame
     local host = DMLCD.totemNativeAnchor
@@ -5328,11 +5396,15 @@ function DMLCD.AttachNativeTotemBar()
         return false
     end
     DMLCD.CaptureNativeTotemBarHome()
+    DMLCD.IsolateNativeTotemBarFromFrameManager()
     if native:GetParent() ~= host then
         native:SetParent(host)
     end
-    -- Blizzard's own OnUpdate positions BOTTOMLEFT against its parent's TOPLEFT
-    -- and drives the stock slide/show state. Leave that script intact.
+    -- Keep Blizzard's native OnUpdate/flyout behavior, but pin the global Y
+    -- offset to zero while DML owns the frame so its icons cannot wander away
+    -- from the DML background/anchor.
+    _G.MULTICASTACTIONBAR_XPOS = DMLCD.TOTEM_NATIVE_X
+    _G.MULTICASTACTIONBAR_YPOS = 0
     native:ClearAllPoints()
     native:SetPoint("BOTTOMLEFT", host, "TOPLEFT", DMLCD.TOTEM_NATIVE_X, 0)
     return true
@@ -5341,18 +5413,28 @@ end
 function DMLCD.RestoreNativeTotemBar()
     local native = _G.MultiCastActionBarFrame
     local home = DMLCD.totemNativeHome
-    if not native or not home then
+    if not native then
         return
     end
-    native:SetParent(home.parent or MainMenuBar or UIParent)
-    native:ClearAllPoints()
-    native:SetPoint(
-        home.point or "BOTTOMLEFT",
-        home.relativeTo or home.parent or MainMenuBar or UIParent,
-        home.relativePoint or "TOPLEFT",
-        tonumber(home.x) or 30,
-        tonumber(home.y) or 0
-    )
+    if home then
+        native:SetParent(home.parent or MainMenuBar or UIParent)
+        native:ClearAllPoints()
+        native:SetPoint(
+            home.point or "BOTTOMLEFT",
+            home.relativeTo or home.parent or MainMenuBar or UIParent,
+            home.relativePoint or "TOPLEFT",
+            tonumber(home.x) or 30,
+            tonumber(home.y) or 0
+        )
+    end
+    DMLCD.RestoreNativeTotemManagerState()
+    DMLCD.totemNativeHome = nil
+
+    -- With Blizzard's manager entries restored, ask it to recalculate the
+    -- stock position from the player's current action-bar layout.
+    if UIParent_ManageFramePositions then
+        pcall(UIParent_ManageFramePositions)
+    end
 end
 
 function DMLCD.CreateTotemBar()
@@ -7057,6 +7139,7 @@ RefreshConfigFields = function()
         end
     end
     configControls.resourceFade:SetChecked(DB.resourceFade and 1 or nil)
+    configControls.hideTotemBarBackground:SetChecked(DB.hideTotemBarBackground and 1 or nil)
     DMLCD.SetRangeFinderDropdownValue(configControls.rangeFinder, DB.rangeFinder)
     configControls.simpleTooltips:SetChecked(DB.simpleTooltips and 1 or nil)
     configControls.debugMessages:SetChecked(DB.debugMessages and 1 or nil)
@@ -7118,6 +7201,7 @@ local function ApplyConfigSettings()
     local requestedJ3 = configControls.j3SpellsIntegration and
         configControls.j3SpellsIntegration:GetChecked() and true or false
     DB.resourceFade = configControls.resourceFade:GetChecked() and true or false
+    DB.hideTotemBarBackground = configControls.hideTotemBarBackground:GetChecked() and true or false
     DB.rangeFinder = DMLCD.NormalizeRangeFinderMode(
         configControls.rangeFinder.selectedValue or DB.rangeFinder
     )
@@ -7274,8 +7358,9 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "showMinimapButton", "Show DMLUI minimap button", 385, -232)
     CreateCheckField(configFrame, "debugMessages", "Addon debug messages", 385, -262)
     CreateCheckField(configFrame, "resourceFade", "Fade when resource is low", 385, -292)
-    DMLCD.CreateRangeFinderDropdown(configFrame, 375, -327)
-    CreateBarLockKeyDropdown(configFrame, 375, -367)
+    CreateCheckField(configFrame, "hideTotemBarBackground", "Hide totem bar background", 385, -322)
+    DMLCD.CreateRangeFinderDropdown(configFrame, 375, -357)
+    CreateBarLockKeyDropdown(configFrame, 375, -397)
 
     CreateLabel(configFrame, "Profiles", 28, -520)
     CreateLabel(configFrame, "Profile name", 40, -550)
