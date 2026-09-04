@@ -9,7 +9,7 @@
 DMLBuffs = DMLBuffs or {}
 local B = DMLBuffs
 
-B.VERSION = "2.0.114"
+B.VERSION = "2.0.116"
 B.ICON_SIZE = 24
 B.PARTY_ICON_SIZE = 18
 B.ICON_GAP = 2
@@ -32,6 +32,7 @@ local initialized = false
 local configFrame
 local configControls = {}
 local configRefreshing = false
+local RefreshConfig
 local PRINT_PREFIX = "|cff66ff99DMLUI Buffs|r: "
 
 B.displays = {}
@@ -223,18 +224,59 @@ local function CopyDefaults(reset)
     end
 end
 
+local function HasDMLUnitFrames()
+    return type(DMLUnitFrames) == "table" and
+        type(DMLUnitFrames.GetFrame) == "function" and
+        type(DMLUnitFrames.IsFrameActive) == "function"
+end
+
+function B:IsUnitFramesAvailable()
+    return HasDMLUnitFrames()
+end
+
+local function IsDMLFrameActive(key)
+    if not key or not HasDMLUnitFrames() then return false end
+    local ok, active = pcall(DMLUnitFrames.IsFrameActive, DMLUnitFrames, key)
+    return ok and active and true or false
+end
+
+function B:IsUnitFrameActive(key)
+    return IsDMLFrameActive(key)
+end
+
+local function HasActivePartyFrames()
+    for i = 1, 4 do
+        if IsDMLFrameActive("party" .. tostring(i)) then return true end
+    end
+    return false
+end
+
+local function HasActiveHighlightFrames()
+    for _, definition in ipairs(highlightDefinitions) do
+        if definition.dmlKey and IsDMLFrameActive(definition.dmlKey) then return true end
+    end
+    return false
+end
+
 local function IsDetached(definition)
-    return definition and definition.detachKey and DB and DB[definition.detachKey] and true or false
+    if not definition or not definition.detachKey or not DB then return false end
+    -- Attachment is available only while this specific DML unit frame is
+    -- enabled. If the module is missing OR this frame is disabled in its own
+    -- settings, use the detached panel at runtime without overwriting the
+    -- player's saved attachment preference.
+    if not IsDMLFrameActive(definition.dmlKey) then return true end
+    return DB[definition.detachKey] and true or false
 end
 
 local function GetDMLUnitFrame(definition)
     if not definition or not definition.dmlKey then return nil end
-    if not DMLUnitFrames or not DMLUnitFrames.GetFrame or not DMLUnitFrames.IsFrameActive then return nil end
-    if not DMLUnitFrames:IsFrameActive(definition.dmlKey) then return nil end
+    if not IsDMLFrameActive(definition.dmlKey) then return nil end
     return DMLUnitFrames:GetFrame(definition.dmlKey)
 end
 
 local function ResolveAnchorFrame(definition)
+    -- Attached aura layouts are a DMLUnitFrames integration only. Standalone
+    -- DMLBuffs never attaches itself to Blizzard's stock unit frames.
     local frame = GetDMLUnitFrame(definition)
     if frame then
         if DMLUnitFrames and DMLUnitFrames.GetAuraAnchor and definition and definition.dmlKey then
@@ -243,7 +285,7 @@ local function ResolveAnchorFrame(definition)
         end
         return frame
     end
-    return definition and definition.stockFrame and _G[definition.stockFrame] or nil
+    return nil
 end
 
 local function SaveMoverPosition(key)
@@ -466,6 +508,13 @@ end
 local function ApplyDisplayLayout(display, force)
     if not display or not DB then return false end
     local definition = display.definition
+
+    if definition.party and not IsDMLFrameActive(definition.dmlKey) then
+        display.container:Hide()
+        display.currentAnchor = nil
+        return false
+    end
+
     local detached = IsDetached(definition)
     local location = NormalizeLocation(DB[definition.locationKey])
     local anchor
@@ -671,6 +720,11 @@ function B:RefreshDisplay(key)
     if not display or not DB then return end
     local definition = display.definition
 
+    if definition.party and not IsDMLFrameActive(definition.dmlKey) then
+        display.container:Hide()
+        return
+    end
+
     if not DB.useDMLBuffs or not DB[definition.showKey] or not UnitExists or not UnitExists(definition.unit) then
         display.container:Hide()
         return
@@ -838,14 +892,19 @@ local function HideAllHighlights()
 end
 
 local function ResolveHighlightFrame(definition)
-    if DMLUnitFrames and DMLUnitFrames.GetFrame and DMLUnitFrames.IsFrameActive and definition.dmlKey and DMLUnitFrames:IsFrameActive(definition.dmlKey) then
-        local frame = DMLUnitFrames:GetFrame(definition.dmlKey)
-        if frame then return frame end
-    end
-    return definition.stockFrame and _G[definition.stockFrame] or nil
+    -- Decurse highlighting is a DMLUnitFrames-only feature and is evaluated
+    -- against the active state of this specific replacement frame.
+    if not definition or not definition.dmlKey or not IsDMLFrameActive(definition.dmlKey) then return nil end
+    local frame = DMLUnitFrames:GetFrame(definition.dmlKey)
+    if frame then return frame end
+    return nil
 end
 
 local function PrepareHighlightLayers()
+    if not HasActiveHighlightFrames() then
+        HideAllHighlights()
+        return
+    end
     if InCombat() then return end
     for _, definition in ipairs(highlightDefinitions) do
         local frame = ResolveHighlightFrame(definition)
@@ -922,6 +981,7 @@ end
 
 local function RefreshHighlights()
     HideAllHighlights()
+    if not HasActiveHighlightFrames() then return end
     if not DB or not DB.useDMLBuffs or not DB.highlightDecurse then return end
 
     for _, definition in ipairs(highlightDefinitions) do
@@ -965,6 +1025,10 @@ function B:OnUnitFramesLayoutChanged()
     ApplyAllLayouts(true)
     PrepareHighlightLayers()
     B:RefreshAll(false)
+    -- Unit Frames can be installed yet have individual replacements disabled.
+    -- Refresh the Buffs settings immediately so per-frame attachment/party/
+    -- highlight controls gray or re-enable in lockstep with those settings.
+    if configFrame and RefreshConfig then RefreshConfig() end
 end
 
 local function ResetPositions()
@@ -1156,42 +1220,56 @@ end
 RefreshControlEnableState = function()
     if not configFrame or not DB then return end
     local enabled = configControls.useDMLBuffs:GetChecked() and true or false
+    local playerFrameActive = IsDMLFrameActive("player")
+    local targetFrameActive = IsDMLFrameActive("target")
+    local totFrameActive = IsDMLFrameActive("targettarget")
+    local partyFramesActive = HasActivePartyFrames()
+    local highlightFramesActive = HasActiveHighlightFrames()
     local playerShown = configControls.showPlayerAuras:GetChecked() and true or false
     local targetShown = configControls.showTargetAuras:GetChecked() and true or false
     local totShown = configControls.showTargetTargetAuras:GetChecked() and true or false
-    local playerDetached = configControls.detachPlayer:GetChecked() and true or false
-    local targetDetached = configControls.detachTarget:GetChecked() and true or false
-    local totDetached = configControls.detachTargetTarget:GetChecked() and true or false
+    local partyShown = configControls.showPartyAuras:GetChecked() and true or false
+    local playerDetached = (not playerFrameActive) or (configControls.detachPlayer:GetChecked() and true or false)
+    local targetDetached = (not targetFrameActive) or (configControls.detachTarget:GetChecked() and true or false)
+    local totDetached = (not totFrameActive) or (configControls.detachTargetTarget:GetChecked() and true or false)
     local decurse = configControls.highlightDecurse:GetChecked() and true or false
 
     SetWidgetEnabled(configControls.showAnchors, enabled)
     SetWidgetEnabled(configControls.locked, enabled)
     SetWidgetEnabled(configControls.hideBlizzardPlayerBuffs, enabled)
+
+    -- Visibility and detached panels remain usable even if the corresponding
+    -- DML unit frame is disabled. Attachment controls are enabled per frame.
     SetWidgetEnabled(configControls.showPlayerAuras, enabled)
-    SetWidgetEnabled(configControls.attachPlayer, enabled and playerShown)
-    SetWidgetEnabled(configControls.detachPlayer, enabled and playerShown)
-    SetWidgetEnabled(configControls.playerLocation, enabled and playerShown and not playerDetached)
+    SetWidgetEnabled(configControls.attachPlayer, enabled and playerFrameActive and playerShown)
+    SetWidgetEnabled(configControls.detachPlayer, enabled and playerFrameActive and playerShown)
+    SetWidgetEnabled(configControls.playerLocation, enabled and playerFrameActive and playerShown and not playerDetached)
     SetWidgetEnabled(configControls.playerScale, enabled and playerShown and playerDetached)
+
     SetWidgetEnabled(configControls.showTargetAuras, enabled)
-    SetWidgetEnabled(configControls.attachTarget, enabled and targetShown)
-    SetWidgetEnabled(configControls.detachTarget, enabled and targetShown)
-    SetWidgetEnabled(configControls.targetLocation, enabled and targetShown and not targetDetached)
+    SetWidgetEnabled(configControls.attachTarget, enabled and targetFrameActive and targetShown)
+    SetWidgetEnabled(configControls.detachTarget, enabled and targetFrameActive and targetShown)
+    SetWidgetEnabled(configControls.targetLocation, enabled and targetFrameActive and targetShown and not targetDetached)
     SetWidgetEnabled(configControls.targetScale, enabled and targetShown and targetDetached)
+
     SetWidgetEnabled(configControls.showTargetTargetAuras, enabled)
-    SetWidgetEnabled(configControls.attachTargetTarget, enabled and totShown)
-    SetWidgetEnabled(configControls.detachTargetTarget, enabled and totShown)
-    SetWidgetEnabled(configControls.targetTargetLocation, enabled and totShown and not totDetached)
+    SetWidgetEnabled(configControls.attachTargetTarget, enabled and totFrameActive and totShown)
+    SetWidgetEnabled(configControls.detachTargetTarget, enabled and totFrameActive and totShown)
+    SetWidgetEnabled(configControls.targetTargetLocation, enabled and totFrameActive and totShown and not totDetached)
     SetWidgetEnabled(configControls.targetTargetScale, enabled and totShown and totDetached)
-    SetWidgetEnabled(configControls.showPartyAuras, enabled)
-    SetWidgetEnabled(configControls.partyLocation, enabled)
-    SetWidgetEnabled(configControls.highlightDecurse, enabled)
-    SetWidgetEnabled(configControls.highlightStyle, enabled and decurse)
+
+    -- Party attachment and cleanse highlighting are available only when at
+    -- least one relevant DML unit frame is actually enabled in Unit Frames.
+    SetWidgetEnabled(configControls.showPartyAuras, enabled and partyFramesActive)
+    SetWidgetEnabled(configControls.partyLocation, enabled and partyFramesActive and partyShown)
+    SetWidgetEnabled(configControls.highlightDecurse, enabled and highlightFramesActive)
+    SetWidgetEnabled(configControls.highlightStyle, enabled and highlightFramesActive and decurse)
     for dispelType in pairs(defaults.decurseColors) do
-        SetWidgetEnabled(configControls["color_" .. dispelType], enabled and decurse)
+        SetWidgetEnabled(configControls["color_" .. dispelType], enabled and highlightFramesActive and decurse)
     end
 end
 
-local function RefreshConfig()
+RefreshConfig = function()
     if not configFrame or not DB then return end
     configRefreshing = true
     configControls.useDMLBuffs:SetChecked(DB.useDMLBuffs and 1 or nil)
@@ -1199,23 +1277,27 @@ local function RefreshConfig()
     configControls.locked:SetChecked(DB.locked and 1 or nil)
     configControls.hideBlizzardPlayerBuffs:SetChecked(DB.hideBlizzardPlayerBuffs and 1 or nil)
 
+    local playerFrameActive = IsDMLFrameActive("player")
+    local targetFrameActive = IsDMLFrameActive("target")
+    local totFrameActive = IsDMLFrameActive("targettarget")
+
     configControls.showPlayerAuras:SetChecked(DB.showPlayerAuras and 1 or nil)
-    configControls.attachPlayer:SetChecked(not DB.detachPlayer and 1 or nil)
-    configControls.detachPlayer:SetChecked(DB.detachPlayer and 1 or nil)
+    configControls.attachPlayer:SetChecked(playerFrameActive and not DB.detachPlayer and 1 or nil)
+    configControls.detachPlayer:SetChecked((not playerFrameActive or DB.detachPlayer) and 1 or nil)
     UIDropDownMenu_SetSelectedValue(configControls.playerLocation, DB.playerLocation)
     UIDropDownMenu_SetText(configControls.playerLocation, DB.playerLocation == "BELOW" and "Below" or "Above")
     configControls.playerScale:SetValue(DB.playerScale)
 
     configControls.showTargetAuras:SetChecked(DB.showTargetAuras and 1 or nil)
-    configControls.attachTarget:SetChecked(not DB.detachTarget and 1 or nil)
-    configControls.detachTarget:SetChecked(DB.detachTarget and 1 or nil)
+    configControls.attachTarget:SetChecked(targetFrameActive and not DB.detachTarget and 1 or nil)
+    configControls.detachTarget:SetChecked((not targetFrameActive or DB.detachTarget) and 1 or nil)
     UIDropDownMenu_SetSelectedValue(configControls.targetLocation, DB.targetLocation)
     UIDropDownMenu_SetText(configControls.targetLocation, DB.targetLocation == "BELOW" and "Below" or "Above")
     configControls.targetScale:SetValue(DB.targetScale)
 
     configControls.showTargetTargetAuras:SetChecked(DB.showTargetTargetAuras and 1 or nil)
-    configControls.attachTargetTarget:SetChecked(not DB.detachTargetTarget and 1 or nil)
-    configControls.detachTargetTarget:SetChecked(DB.detachTargetTarget and 1 or nil)
+    configControls.attachTargetTarget:SetChecked(totFrameActive and not DB.detachTargetTarget and 1 or nil)
+    configControls.detachTargetTarget:SetChecked((not totFrameActive or DB.detachTargetTarget) and 1 or nil)
     UIDropDownMenu_SetSelectedValue(configControls.targetTargetLocation, DB.targetTargetLocation)
     UIDropDownMenu_SetText(configControls.targetTargetLocation, DB.targetTargetLocation == "BELOW" and "Below" or "Above")
     configControls.targetTargetScale:SetValue(DB.targetTargetScale)
@@ -1243,20 +1325,29 @@ local function ApplyConfig()
     DB.locked = configControls.locked:GetChecked() and true or false
     DB.hideBlizzardPlayerBuffs = configControls.hideBlizzardPlayerBuffs:GetChecked() and true or false
 
+    local playerFrameActive = IsDMLFrameActive("player")
+    local targetFrameActive = IsDMLFrameActive("target")
+    local totFrameActive = IsDMLFrameActive("targettarget")
+    local partyFramesActive = HasActivePartyFrames()
+    local highlightFramesActive = HasActiveHighlightFrames()
+
     DB.showPlayerAuras = configControls.showPlayerAuras:GetChecked() and true or false
-    DB.detachPlayer = configControls.detachPlayer:GetChecked() and true or false
     DB.playerScale = NormalizeScale(configControls.playerScale:GetValue())
 
     DB.showTargetAuras = configControls.showTargetAuras:GetChecked() and true or false
-    DB.detachTarget = configControls.detachTarget:GetChecked() and true or false
     DB.targetScale = NormalizeScale(configControls.targetScale:GetValue())
 
     DB.showTargetTargetAuras = configControls.showTargetTargetAuras:GetChecked() and true or false
-    DB.detachTargetTarget = configControls.detachTargetTarget:GetChecked() and true or false
     DB.targetTargetScale = NormalizeScale(configControls.targetTargetScale:GetValue())
 
-    DB.showPartyAuras = configControls.showPartyAuras:GetChecked() and true or false
-    DB.highlightDecurse = configControls.highlightDecurse:GetChecked() and true or false
+    -- Never overwrite an attachment/highlight preference just because the
+    -- corresponding DML unit frame is currently disabled. Runtime fallback
+    -- handles detached-only mode until that frame is enabled again.
+    if playerFrameActive then DB.detachPlayer = configControls.detachPlayer:GetChecked() and true or false end
+    if targetFrameActive then DB.detachTarget = configControls.detachTarget:GetChecked() and true or false end
+    if totFrameActive then DB.detachTargetTarget = configControls.detachTargetTarget:GetChecked() and true or false end
+    if partyFramesActive then DB.showPartyAuras = configControls.showPartyAuras:GetChecked() and true or false end
+    if highlightFramesActive then DB.highlightDecurse = configControls.highlightDecurse:GetChecked() and true or false end
 
     ApplyAllLayouts(true)
     B:RefreshAll(false)
@@ -1477,6 +1568,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
             Initialize()
         elseif arg1 == "DMLUnitFrames" and initialized then
             B:OnUnitFramesLayoutChanged()
+            RefreshConfig()
         end
         return
     end

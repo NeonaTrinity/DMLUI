@@ -1,4 +1,4 @@
-DMLUI - Buffs 2.0.114
+DMLUI - Buffs 2.0.116
 
 Optional DMLUI aura module for WoW 3.3.5a.
 
@@ -19,3 +19,18 @@ Features:
 
 Slash command:
 /dmlbuffs
+
+Standalone mode (DMLUnitFrames not installed):
+- Player, Target, and Target-of-Target aura displays automatically use detached movable/scalable panels.
+- Saved attach/detach preferences are preserved and become active again if DMLUnitFrames is restored.
+- Hide Blizzard player buffs remains available.
+- Unit-frame attachment controls, Party aura attachment, and cleanse highlighting are disabled/grayed out.
+- DMLBuffs never falls back to attaching/highlighting Blizzard stock unit frames.
+
+
+2.0.116 - Per-frame standalone fallback
+- DMLBuffs now checks whether each DMLUnitFrames replacement is actually enabled, not merely whether the addon is loaded.
+- Player/Target/Target-of-Target aura panels automatically behave as detached panels when their corresponding DML unit frame is disabled, without overwriting the saved attach preference.
+- Party aura controls are disabled and party aura rows are hidden when DML party frames are disabled.
+- Decurse highlight controls are disabled when no relevant DML unit frame is active; highlighting never falls back to Blizzard frames.
+- Re-enabling a DML unit frame restores the player's saved attachment/highlight behavior.

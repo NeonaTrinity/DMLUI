@@ -1,4 +1,4 @@
-# DMLUI 2.0.114
+# DMLUI 2.0.116
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -9,9 +9,32 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
 - `DMLUnitFrames/` - Unit Frames module (2.0.114).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.106).
-- `DMLBuffs/` - optional attached/detached aura and cleanse-highlighting module (2.0.114).
+- `DMLBuffs/` - optional attached/detached aura and cleanse-highlighting module (2.0.116).
 - `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.113).
 
+
+
+
+## 2.0.116 highlights
+
+### DML Buffs
+- Standalone fallback is now evaluated per DML unit frame, not only by whether `DMLUnitFrames/` is loaded.
+- If Player, Target, or Target-of-Target DML frames are disabled in Unit Frames settings, their aura groups automatically use the detached movable/scalable panels.
+- Attach/detach and Above/Below controls gray independently for whichever DML frame is disabled; detached scale remains available.
+- DML Party aura controls gray and Party aura rows hide whenever DML party frames are disabled.
+- Decurse highlight controls gray when no relevant DML unit frame is active, and highlighting never falls back to Blizzard unit frames.
+- Saved attachment, Party, and highlight preferences are preserved while a DML frame is disabled and return when that frame is re-enabled.
+- Buffs settings refresh immediately when Unit Frames settings change.
+
+## 2.0.115 highlights
+
+### DML Buffs
+- Added true standalone operation when `DMLUnitFrames/` is not installed.
+- Player, Target, and Target-of-Target auras automatically use detached movable/scalable panels in standalone mode.
+- Unit-frame attachment, Party aura attachment, and cleanse highlighting controls are gray/disabled without DML Unit Frames.
+- `Hide Blizzard player buffs`, detached aura visibility, anchors, locking, and detached scales remain fully functional.
+- Saved attach/detach/Party/highlight settings are preserved rather than overwritten, so they return if Unit Frames is installed again.
+- Removed fallback attachment/highlighting of Blizzard stock unit frames; those features are now strictly DMLUnitFrames integrations.
 
 ## 2.0.114 highlights
 

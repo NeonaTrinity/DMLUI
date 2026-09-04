@@ -1,4 +1,4 @@
-DMLUI Buffs 2.0.114 - in-game checklist
+DMLUI Buffs 2.0.116 - in-game checklist
 
 [ ] Launcher shows Buffs when DMLBuffs is installed.
 [ ] Launcher Buffs button is gray when the DMLBuffs folder is removed.
@@ -20,3 +20,20 @@ DMLUI Buffs 2.0.114 - in-game checklist
 [ ] When multiple supported debuffs are present, newest applied effect controls the highlight.
 [ ] Hostile target players are not treated as friendly cleanse targets.
 [ ] Module survives /reload with saved settings and positions.
+
+[ ] Remove/disable DMLUnitFrames and /reload: DMLBuffs loads without errors.
+[ ] Without DMLUnitFrames, Player/Target/ToT aura panels are forced to detached runtime layout.
+[ ] Without DMLUnitFrames, Show/Hide Blizzard player buffs and detached panel anchors/scales still work.
+[ ] Without DMLUnitFrames, Attach controls, Party aura controls, and all cleanse-highlight controls are gray/disabled.
+[ ] Without DMLUnitFrames, no DML aura/highlight is attached to Blizzard PlayerFrame/TargetFrame/Party frames.
+[ ] Reinstall/enable DMLUnitFrames and /reload: previously saved attachment/party/highlight preferences return unchanged.
+
+
+Per-frame disabled Unit Frames behavior
+[ ] With DMLUnitFrames installed, disable only Use DML Player Frame: player auras move to detached panel; Player attach/location controls gray; player detached scale stays usable.
+[ ] Re-enable Use DML Player Frame: prior attach/detach preference returns without being overwritten.
+[ ] Repeat for Target and Target of Target independently.
+[ ] Disable DML party frames: party aura controls gray and no party aura rows attach to Blizzard party frames.
+[ ] Re-enable DML party frames: saved party aura setting returns.
+[ ] Disable every relevant DML unit frame: decurse checkbox/style/colors gray and no Blizzard frame receives a DML highlight.
+[ ] Enable any relevant DML unit frame: decurse controls become available again without losing the saved setting.
