@@ -2,7 +2,7 @@
 ## Title: DML Cooldown Bar - J3Spells Integration
 ## Notes: Optional J3Spells/ALE integration for DML Cooldown Bar. Requires the J3Spells server module.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.84
+## Version: 2.0.85
 ## DefaultState: Enabled
 ## LoadOnDemand: 1
 ## Dependencies: DMLCooldownBar

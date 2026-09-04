@@ -1,4 +1,4 @@
-DML Cooldown Bar 2.0.84 Universal - test checklist
+DML Cooldown Bar 2.0.85 Universal - test checklist
 
 NATIVE / PORTABLE
 [ ] Remove or disable DMLCooldownBar_J3Spells and /reload.
@@ -24,3 +24,18 @@ MIGRATION
 [ ] Old Native SavedVariables keep J3 disabled.
 [ ] Loading/copying named profiles does not toggle the J3 checkbox.
 [ ] Saved profiles and bar assignments remain intact.
+
+
+2.0.85 ITEM COUNT / TOTEM TESTS
+- Put a stack of water/potions on a DML bar: quantity appears at bottom-right.
+- Use/split/destroy the stack: quantity updates from BAG_UPDATE without item-info retries.
+- Remove the final item or exhaust a charged item: assigned icon stays visible but fades.
+- Reacquire the item: icon returns to full opacity and count returns.
+- On a Wrath shaman with the multicast totem bar unlocked, enable Use DML totem bar.
+- Verify Blizzard's original totem bar moves to the DML anchor and the stock bar is not duplicated.
+- Verify Earth/Fire/Water/Air slot flyouts still open and selecting a known totem changes that slot.
+- Verify Call/summon page and recall controls remain functional.
+- Verify Show anchors and Lock bars control the DML totem drag handle.
+- Verify Reset Positions recenters the totem anchor.
+- Disable Use DML totem bar and verify Blizzard's totem bar returns to its original stock position.
+- Verify the above with J3 integration absent, installed but disabled, and enabled.

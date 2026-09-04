@@ -2,7 +2,7 @@
 ## Title: DML Cooldown Bar
 ## Notes: Universal configurable action bars for WoW 3.3.5a. Native cooldowns by default; optional J3Spells integration supported.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.84
+## Version: 2.0.85
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## SavedVariables: DMLCooldownBarGlobalDB

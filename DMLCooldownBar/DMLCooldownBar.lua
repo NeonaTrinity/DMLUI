@@ -25,7 +25,7 @@ DMLCD.itemInfoRecoveryDue = DMLCD.itemInfoRecoveryDue or {}
 DMLCD.itemInfoAssigned = DMLCD.itemInfoAssigned or {}
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.84"
+local ADDON_VERSION = "2.0.85"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 
@@ -64,7 +64,7 @@ local BAR_DRAG_HANDLE_HEIGHT = 18
 local BAR_DRAG_HANDLE_GAP = 2
 
 local defaults = {
-    version = 23,
+    version = 24,
     locked = false,
     shown = true,
     barCount = 1,
@@ -87,6 +87,7 @@ local defaults = {
     blizzardBarMode = "SHOW",
     hideGryphons = false,
     useDMLAuraBar = false,
+    useDMLTotemBar = false,
     useDMLPetBar = false,
     useBar1AsStanceBar = false,
     showAnchors = true,
@@ -678,7 +679,7 @@ local function CopyDefaults(reset)
         }
     end
 
-    DB.version = 23
+    DB.version = 24
     DB.barCount = Clamp(DB.barCount, 1, MAX_BARS) or defaults.barCount
     DB.buttonCount = Clamp(DB.buttonCount, 1, MAX_BUTTONS) or defaults.buttonCount
     DB.columns = Clamp(DB.columns, 1, MAX_BUTTONS) or defaults.columns
@@ -740,6 +741,7 @@ local function CopyDefaults(reset)
     DB.debugMessages = DB.debugMessages and true or false
     DB.hideGryphons = DB.hideGryphons and true or false
     DB.useDMLAuraBar = DB.useDMLAuraBar and true or false
+    DB.useDMLTotemBar = DB.useDMLTotemBar and true or false
     DB.useDMLPetBar = DB.useDMLPetBar and true or false
     DB.useBar1AsStanceBar = DB.useBar1AsStanceBar and true or false
     DB.showAnchors = DB.showAnchors ~= false
@@ -870,6 +872,9 @@ local function SaveAllPositions()
     if DMLCD.SaveAuraBarPosition then
         DMLCD.SaveAuraBarPosition()
     end
+    if DMLCD.SaveTotemBarPosition then
+        DMLCD.SaveTotemBarPosition()
+    end
 end
 
 local function DeepCopy(value, seen)
@@ -969,6 +974,7 @@ local function BuildLayoutSnapshot()
     snapshot.barPositions = DeepCopy(DB.barPositions or {})
     snapshot.petBarPosition = DeepCopy(DB.petBarPosition or {})
     snapshot.auraBarPosition = DeepCopy(DB.auraBarPosition or {})
+    snapshot.totemBarPosition = DeepCopy(DB.totemBarPosition or {})
     snapshot.barSettings = DeepCopy(DB.barSettings or {})
     snapshot.point = DB.point
     snapshot.relativePoint = DB.relativePoint
@@ -1242,6 +1248,12 @@ local function RestoreAllPositions()
     end
     if DMLCD.RestorePetBarPosition then
         DMLCD.RestorePetBarPosition()
+    end
+    if DMLCD.RestoreAuraBarPosition then
+        DMLCD.RestoreAuraBarPosition()
+    end
+    if DMLCD.RestoreTotemBarPosition then
+        DMLCD.RestoreTotemBarPosition()
     end
 end
 
@@ -1790,6 +1802,83 @@ function DMLCD.ScheduleItemInfoRecovery(itemId)
     end
 end
 
+-- Return both physical item quantity and available uses/charges. The third
+-- GetItemCount argument has existed since pre-Wrath and mirrors the count that
+-- Blizzard action buttons use for charged items. This does not request item
+-- metadata and is safe to use on BAG_UPDATE.
+function DMLCD.GetItemInventoryCounts(itemId)
+    itemId = tonumber(itemId)
+    if not itemId or not GetItemCount then
+        return 0, 0
+    end
+
+    local stackCount = 0
+    local useCount = 0
+    local okStack, stackValue = pcall(GetItemCount, itemId, false)
+    if okStack then
+        stackCount = math.max(0, tonumber(stackValue) or 0)
+    end
+
+    local okUses, usesValue = pcall(GetItemCount, itemId, false, true)
+    if okUses then
+        useCount = math.max(0, tonumber(usesValue) or 0)
+    else
+        useCount = stackCount
+    end
+
+    return stackCount, useCount
+end
+
+function DMLCD.UpdateButtonItemCountVisual(button, assignment)
+    if not button then
+        return
+    end
+
+    if not assignment or not (assignment.kind == "item" or assignment.itemId) then
+        button.dmlItemUnavailable = false
+        if button.countText then
+            button.countText:SetText("")
+            button.countText:Hide()
+        end
+        DMLCD.ApplyButtonIconAppearance(button)
+        return
+    end
+
+    local stackCount, useCount = DMLCD.GetItemInventoryCounts(assignment.itemId)
+    button.dmlItemUnavailable = (useCount <= 0)
+
+    if button.countText then
+        local displayCount = useCount
+        if displayCount > 1 then
+            if displayCount > 9999 then
+                button.countText:SetText("*")
+            else
+                button.countText:SetText(tostring(displayCount))
+            end
+            button.countText:Show()
+        else
+            button.countText:SetText("")
+            button.countText:Hide()
+        end
+    end
+
+    DMLCD.ApplyButtonIconAppearance(button)
+end
+
+function DMLCD.RefreshItemCountVisualEntry(_, button)
+    if not button then
+        return
+    end
+    local assignment = DMLCD.GetAssignmentForIndex(button.dmlIndex)
+    if assignment and (assignment.kind == "item" or assignment.itemId) then
+        DMLCD.UpdateButtonItemCountVisual(button, assignment)
+    end
+end
+
+function DMLCD.RefreshItemCountVisuals()
+    ForEachActiveButton(DMLCD.RefreshItemCountVisualEntry)
+end
+
 function DMLCD.ResolveItem(itemId, suppliedName, suppliedIcon)
     itemId = tonumber(itemId)
     if not itemId then
@@ -2301,6 +2390,9 @@ function DMLCD.ApplyButtonIconAppearance(button)
     end
 
     local iconAlpha = 1
+    if button.dmlItemUnavailable then
+        iconAlpha = 0.35
+    end
     if button.dmlConditionUnavailable then
         iconAlpha = 0.35
     end
@@ -2982,6 +3074,10 @@ local function ShowButtonTooltip(button)
         GameTooltip:AddLine("Keybind: " .. tostring(key), 0.4, 1, 0.6)
     end
 
+    if button.dmlItemUnavailable then
+        GameTooltip:AddLine("This item is not in your bags or has no remaining charges.", 1, 0.35, 0.35, true)
+    end
+
     if button.dmlResourceLow then
         GameTooltip:AddLine("Not enough mana or other spell resource.", 1, 0.35, 0.35, true)
     elseif button.dmlConditionUnavailable then
@@ -3031,6 +3127,11 @@ local function UpdateButton(button)
         end
         button.dmlResourceLow = false
         button.dmlConditionUnavailable = false
+        button.dmlItemUnavailable = false
+        if button.countText then
+            button.countText:SetText("")
+            button.countText:Hide()
+        end
         button.dmlRangeState = nil
         button.dmlOutOfRange = false
         if button.rangeBorder then
@@ -3112,6 +3213,7 @@ local function UpdateButton(button)
     DMLCD.UpdateButtonResourceVisual(button)
     DMLCD.UpdateButtonActionStateVisual(button, assignment, resolved)
     DMLCD.UpdateButtonRangeVisual(button, assignment, resolved)
+    DMLCD.UpdateButtonItemCountVisual(button, assignment)
 
     if button.hotkeyText and DB.keybinds then
         button.hotkeyText:SetText(DMLCD.CompactBindingText(DB.keybinds[button.dmlIndex]))
@@ -4250,6 +4352,13 @@ local function CreateButton(index, parentBar, barIndex, slotIndex)
     button.cooldownText:SetJustifyH("CENTER")
     button.cooldownText:SetTextColor(1, 0.82, 0)
 
+    button.countText = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
+    button.countText:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", -2, 2)
+    button.countText:SetJustifyH("RIGHT")
+    button.countText:SetTextColor(1, 1, 1)
+    button.countText:SetText("")
+    button.countText:Hide()
+
     button.emptyText = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     button.emptyText:SetPoint("CENTER", button, "CENTER", 0, 0)
     button.emptyText:SetTextColor(0.65, 0.65, 0.65)
@@ -4492,6 +4601,16 @@ local function ApplyBackground()
             DMLCD.auraBar:SetBackdropBorderColor(0, 0, 0, 0)
         end
     end
+
+    if DMLCD.totemBar then
+        if DB.background then
+            DMLCD.totemBar:SetBackdropColor(0.04, 0.04, 0.04, 0.78)
+            DMLCD.totemBar:SetBackdropBorderColor(0.55, 0.55, 0.55, 0.9)
+        else
+            DMLCD.totemBar:SetBackdropColor(0, 0, 0, 0)
+            DMLCD.totemBar:SetBackdropBorderColor(0, 0, 0, 0)
+        end
+    end
 end
 
 local function ApplyLockState()
@@ -4521,6 +4640,15 @@ local function ApplyLockState()
             DMLCD.auraBarHandle:Hide()
         else
             DMLCD.auraBarHandle:Show()
+        end
+    end
+
+    if DMLCD.totemBarHandle then
+        local hasTotemBar = HasMultiCastActionBar and HasMultiCastActionBar()
+        if DB.locked or not DB.showAnchors or not DB.useDMLTotemBar or not hasTotemBar then
+            DMLCD.totemBarHandle:Hide()
+        else
+            DMLCD.totemBarHandle:Show()
         end
     end
 end
@@ -4702,6 +4830,9 @@ ApplyBlizzardBarSettings = function()
 
     if DMLCD.ApplyAuraBarSettings then
         DMLCD.ApplyAuraBarSettings()
+    end
+    if DMLCD.ApplyTotemBarSettings then
+        DMLCD.ApplyTotemBarSettings()
     end
     if DMLCD.ApplyPetBarSettings then
         DMLCD.ApplyPetBarSettings()
@@ -5089,6 +5220,251 @@ function DMLCD.ApplyAuraBarSettings()
     if DB.useDMLAuraBar and count > 0 then
         frame:Show()
     else
+        frame:Hide()
+    end
+
+    ApplyBackground()
+    ApplyLockState()
+end
+
+-- DML Totem Bar -----------------------------------------------------------
+-- Wrath's shaman MultiCastActionBarFrame already owns the secure totem
+-- buttons, summon/recall buttons, pages, and flyout that calls SetMultiCastSpell.
+-- Rather than duplicate that protected behavior, DML optionally reparents the
+-- stock frame to a movable DML anchor. The native frame continues to update and
+-- its element flyouts remain exactly Blizzard's implementation.
+DMLCD.TOTEM_BAR_WIDTH = 230
+DMLCD.TOTEM_BAR_HEIGHT = 38
+DMLCD.TOTEM_NATIVE_X = 30
+
+function DMLCD.GetDefaultTotemBarPosition()
+    return "CENTER", "CENTER", 0, -150
+end
+
+function DMLCD.SaveTotemBarPosition()
+    if not DB or not DMLCD.totemBar then
+        return
+    end
+    local point, _, relativePoint, x, y = DMLCD.totemBar:GetPoint(1)
+    DB.totemBarPosition = {
+        point = point or "CENTER",
+        relativePoint = relativePoint or "CENTER",
+        x = x or 0,
+        y = y or -150
+    }
+end
+
+function DMLCD.RestoreTotemBarPosition()
+    if not DB or not DMLCD.totemBar then
+        return
+    end
+    local saved = DB.totemBarPosition
+    local point, relativePoint, x, y
+    if type(saved) == "table" then
+        point = saved.point or "CENTER"
+        relativePoint = saved.relativePoint or "CENTER"
+        x = tonumber(saved.x) or 0
+        y = tonumber(saved.y) or -150
+    else
+        point, relativePoint, x, y = DMLCD.GetDefaultTotemBarPosition()
+        DB.totemBarPosition = { point = point, relativePoint = relativePoint, x = x, y = y }
+    end
+    DMLCD.totemBar:ClearAllPoints()
+    DMLCD.totemBar:SetPoint(point, UIParent, relativePoint, x, y)
+end
+
+function DMLCD.ConstrainTotemBarToScreen()
+    local frame = DMLCD.totemBar
+    if not frame or not UIParent then
+        return false
+    end
+    local left, bottom = frame:GetLeft(), frame:GetBottom()
+    local width, height = frame:GetWidth(), frame:GetHeight()
+    local screenWidth, screenHeight = UIParent:GetWidth(), UIParent:GetHeight()
+    if not left or not bottom or not width or not height or not screenWidth or not screenHeight then
+        return false
+    end
+    local right = left + width
+    local top = bottom + height + BAR_DRAG_HANDLE_HEIGHT + BAR_DRAG_HANDLE_GAP
+    local deltaX, deltaY = 0, 0
+    if left < -BAR_EDGE_OVERHANG then
+        deltaX = -BAR_EDGE_OVERHANG - left
+    elseif right > screenWidth + BAR_EDGE_OVERHANG then
+        deltaX = (screenWidth + BAR_EDGE_OVERHANG) - right
+    end
+    if bottom < -BAR_EDGE_OVERHANG then
+        deltaY = -BAR_EDGE_OVERHANG - bottom
+    elseif top > screenHeight then
+        deltaY = screenHeight - top
+    end
+    if deltaX == 0 and deltaY == 0 then
+        return false
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", left + deltaX, bottom + deltaY)
+    return true
+end
+
+function DMLCD.CaptureNativeTotemBarHome()
+    local native = _G.MultiCastActionBarFrame
+    if not native or DMLCD.totemNativeHome then
+        return
+    end
+    local point, relativeTo, relativePoint, x, y = native:GetPoint(1)
+    DMLCD.totemNativeHome = {
+        parent = native:GetParent(),
+        point = point or "BOTTOMLEFT",
+        relativeTo = relativeTo,
+        relativePoint = relativePoint or "TOPLEFT",
+        x = tonumber(x) or 30,
+        y = tonumber(y) or 0
+    }
+end
+
+function DMLCD.AttachNativeTotemBar()
+    local native = _G.MultiCastActionBarFrame
+    local host = DMLCD.totemNativeAnchor
+    if not native or not host then
+        return false
+    end
+    DMLCD.CaptureNativeTotemBarHome()
+    if native:GetParent() ~= host then
+        native:SetParent(host)
+    end
+    -- Blizzard's own OnUpdate positions BOTTOMLEFT against its parent's TOPLEFT
+    -- and drives the stock slide/show state. Leave that script intact.
+    native:ClearAllPoints()
+    native:SetPoint("BOTTOMLEFT", host, "TOPLEFT", DMLCD.TOTEM_NATIVE_X, 0)
+    return true
+end
+
+function DMLCD.RestoreNativeTotemBar()
+    local native = _G.MultiCastActionBarFrame
+    local home = DMLCD.totemNativeHome
+    if not native or not home then
+        return
+    end
+    native:SetParent(home.parent or MainMenuBar or UIParent)
+    native:ClearAllPoints()
+    native:SetPoint(
+        home.point or "BOTTOMLEFT",
+        home.relativeTo or home.parent or MainMenuBar or UIParent,
+        home.relativePoint or "TOPLEFT",
+        tonumber(home.x) or 30,
+        tonumber(home.y) or 0
+    )
+end
+
+function DMLCD.CreateTotemBar()
+    if DMLCD.totemBar then
+        return DMLCD.totemBar
+    end
+
+    local frame = CreateFrame("Frame", "DMLCooldownBarTotemFrame", UIParent)
+    frame:SetFrameStrata("HIGH")
+    frame:SetFrameLevel(20)
+    frame:SetWidth(DMLCD.TOTEM_BAR_WIDTH + DMLCD.TOTEM_NATIVE_X)
+    frame:SetHeight(DMLCD.TOTEM_BAR_HEIGHT)
+    frame:SetMovable(true)
+    frame:SetClampedToScreen(false)
+    frame:EnableMouse(false)
+    frame:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+
+    local nativeAnchor = CreateFrame("Frame", "DMLCooldownBarTotemNativeAnchor", frame)
+    nativeAnchor:SetWidth(DMLCD.TOTEM_BAR_WIDTH + DMLCD.TOTEM_NATIVE_X)
+    nativeAnchor:SetHeight(0.01)
+    nativeAnchor:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    DMLCD.totemNativeAnchor = nativeAnchor
+
+    local handle = CreateFrame("Frame", "DMLCooldownBarTotemDragHandle", frame)
+    handle:SetHeight(BAR_DRAG_HANDLE_HEIGHT)
+    handle:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", DMLCD.TOTEM_NATIVE_X, BAR_DRAG_HANDLE_GAP)
+    handle:SetWidth(DMLCD.TOTEM_BAR_WIDTH)
+    handle:EnableMouse(true)
+    handle:RegisterForDrag("LeftButton")
+    handle:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true,
+        tileSize = 16,
+        edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    handle:SetBackdropColor(0.05, 0.05, 0.05, 0.85)
+    handle:SetBackdropBorderColor(0.3, 0.9, 0.55, 0.9)
+
+    local title = handle:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    title:SetPoint("CENTER", handle, "CENTER", 0, 0)
+    title:SetText("DML Totem Bar - drag to move")
+
+    handle:SetScript("OnDragStart", function()
+        if DB.locked or IsInCombat() then
+            return
+        end
+        frame:StartMoving()
+    end)
+    handle:SetScript("OnDragStop", function()
+        frame:StopMovingOrSizing()
+        DMLCD.ConstrainTotemBarToScreen()
+        DMLCD.SaveTotemBarPosition()
+        SaveCharacterLayoutSnapshot()
+    end)
+
+    DMLCD.totemBar = frame
+    DMLCD.totemBarHandle = handle
+    DMLCD.RestoreTotemBarPosition()
+    frame:Hide()
+    return frame
+end
+
+function DMLCD.EnsureTotemBar()
+    if not DMLCD.totemBar then
+        DMLCD.CreateTotemBar()
+    end
+    return DMLCD.totemBar
+end
+
+function DMLCD.ApplyTotemBarSettings()
+    if not DB then
+        return
+    end
+    local frame = DMLCD.EnsureTotemBar()
+    local native = _G.MultiCastActionBarFrame
+    if not frame or not native then
+        if frame then frame:Hide() end
+        return
+    end
+
+    if IsInCombat() then
+        DMLCD.pendingTotemBarRefresh = true
+        return
+    end
+    DMLCD.pendingTotemBarRefresh = false
+
+    if DB.useDMLTotemBar then
+        DMLCD.AttachNativeTotemBar()
+        local hasBar = HasMultiCastActionBar and HasMultiCastActionBar()
+        if hasBar then
+            frame:Show()
+            if ShowMultiCastActionBar then
+                pcall(ShowMultiCastActionBar, true)
+            end
+        else
+            frame:Hide()
+        end
+        -- Force the stock frame to recalculate its currently selected totems.
+        if MultiCastActionBarFrame_Update then
+            pcall(MultiCastActionBarFrame_Update, native)
+        end
+    else
+        DMLCD.RestoreNativeTotemBar()
         frame:Hide()
     end
 
@@ -5660,6 +6036,7 @@ end
 
 local function LayoutButtons()
     DMLCD.EnsurePetBar()
+    DMLCD.EnsureTotemBar()
 
     -- Slash commands from older versions still edit the original scalar
     -- fields. Mirror those values into Bar 1 before laying out the bars.
@@ -5725,6 +6102,7 @@ local function LayoutButtons()
     ApplyBackground()
     ApplyLockState()
     DMLCD.ApplyPetBarSettings()
+    DMLCD.ApplyTotemBarSettings()
     if RefreshKeybindLabels then
         RefreshKeybindLabels()
     end
@@ -6685,6 +7063,7 @@ RefreshConfigFields = function()
     configControls.showMinimapButton:SetChecked(DB.showMinimapButton and 1 or nil)
     configControls.hideGryphons:SetChecked(DB.hideGryphons and 1 or nil)
     configControls.useDMLAuraBar:SetChecked(DB.useDMLAuraBar and 1 or nil)
+    configControls.useDMLTotemBar:SetChecked(DB.useDMLTotemBar and 1 or nil)
     configControls.useDMLPetBar:SetChecked(DB.useDMLPetBar and 1 or nil)
     configControls.useBar1AsStanceBar:SetChecked(DB.useBar1AsStanceBar and 1 or nil)
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
@@ -6743,6 +7122,7 @@ local function ApplyConfigSettings()
     DB.showMinimapButton = configControls.showMinimapButton:GetChecked() and true or false
     DB.hideGryphons = configControls.hideGryphons:GetChecked() and true or false
     DB.useDMLAuraBar = configControls.useDMLAuraBar:GetChecked() and true or false
+    DB.useDMLTotemBar = configControls.useDMLTotemBar:GetChecked() and true or false
     DB.useDMLPetBar = configControls.useDMLPetBar:GetChecked() and true or false
     DB.useBar1AsStanceBar = configControls.useBar1AsStanceBar:GetChecked() and true or false
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
@@ -6780,6 +7160,9 @@ local function ResetFromConfig()
     if DMLCD.RestoreAuraBarPosition then
         DMLCD.RestoreAuraBarPosition()
     end
+    if DMLCD.RestoreTotemBarPosition then
+        DMLCD.RestoreTotemBarPosition()
+    end
     LayoutButtons()
     SetShown(DB.shown)
     ApplySavedKeybinds()
@@ -6798,6 +7181,7 @@ function DMLCD.ResetBarPositionsFromConfig()
     DB.barPositions = {}
     DB.petBarPosition = nil
     DB.auraBarPosition = nil
+    DB.totemBarPosition = nil
     DB.point = defaults.point
     DB.relativePoint = defaults.relativePoint
     DB.x = defaults.x
@@ -6810,11 +7194,14 @@ function DMLCD.ResetBarPositionsFromConfig()
     if DMLCD.RestoreAuraBarPosition then
         DMLCD.RestoreAuraBarPosition()
     end
+    if DMLCD.RestoreTotemBarPosition then
+        DMLCD.RestoreTotemBarPosition()
+    end
     SaveAllPositions()
     RefreshConfigFields()
     SaveCharacterLayoutSnapshot()
 
-    Print("DML bar positions, including the aura and pet bars, reset to the center of the screen.")
+    Print("DML bar positions, including the aura, totem, and pet bars, reset to the center of the screen.")
 end
 
 local function CreateConfigFrame()
@@ -6866,9 +7253,10 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "hideGryphons", "Hide gryphons", 40, -397)
     CreateCheckField(configFrame, "useDMLAuraBar", "Use DML aura bar", 185, -397)
     CreateCheckField(configFrame, "showAnchors", "Show anchors", 40, -427)
-    CreateCheckField(configFrame, "useDMLPetBar", "Use DML pet bar", 185, -427)
+    CreateCheckField(configFrame, "useDMLTotemBar", "Use DML totem bar", 185, -427)
     CreateCheckField(configFrame, "simpleTooltips", "Simple tooltips", 40, -457)
-    CreateCheckField(configFrame, "useBar1AsStanceBar", "Use bar 1 as stance bar", 185, -457)
+    CreateCheckField(configFrame, "useDMLPetBar", "Use DML pet bar", 185, -457)
+    CreateCheckField(configFrame, "useBar1AsStanceBar", "Use bar 1 as stance bar", 185, -487)
 
     CreateLabel(configFrame, "Behavior", 375, -55)
     CreateCheckField(configFrame, "shown", "Show bars", 385, -82)
@@ -7952,6 +8340,7 @@ eventFrame:RegisterEvent("UNIT_RAGE")
 eventFrame:RegisterEvent("UNIT_ENERGY")
 eventFrame:RegisterEvent("UNIT_RUNIC_POWER")
 eventFrame:RegisterEvent("UNIT_DISPLAYPOWER")
+eventFrame:RegisterEvent("BAG_UPDATE")
 eventFrame:RegisterEvent("BAG_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("COMPANION_UPDATE")
 eventFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -7961,6 +8350,7 @@ eventFrame:RegisterEvent("ACTIONBAR_HIDEGRID")
 eventFrame:RegisterEvent("UPDATE_BONUS_ACTIONBAR")
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORMS")
 eventFrame:RegisterEvent("UPDATE_SHAPESHIFT_FORM")
+eventFrame:RegisterEvent("UPDATE_MULTI_CAST_ACTIONBAR")
 eventFrame:RegisterEvent("PET_BAR_UPDATE")
 eventFrame:RegisterEvent("PET_BAR_UPDATE_COOLDOWN")
 eventFrame:RegisterEvent("PET_BAR_SHOWGRID")
@@ -8008,6 +8398,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         if DMLCD.pendingAuraBarRefresh then
             DMLCD.ApplyAuraBarSettings()
         end
+        if DMLCD.pendingTotemBarRefresh then
+            DMLCD.ApplyTotemBarSettings()
+        end
         if DMLCD.pendingPetBarRefresh then
             DMLCD.ApplyPetBarSettings()
         end
@@ -8032,6 +8425,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         if DMLCD.RefreshAuraBar then
             DMLCD.RefreshAuraBar(not IsInCombat())
         end
+    elseif event == "UPDATE_MULTI_CAST_ACTIONBAR" then
+        DMLCD.ApplyTotemBarSettings()
+        ApplyLockState()
     elseif event == "PET_BAR_UPDATE" or event == "PET_BAR_UPDATE_COOLDOWN" or
         event == "PET_BAR_SHOWGRID" or event == "PET_BAR_HIDEGRID" or
         event == "ACTIONBAR_UPDATE_STATE" or event == "PLAYER_CONTROL_LOST" or
@@ -8066,6 +8462,10 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "GET_ITEM_INFO_RECEIVED" then
         local itemId, success = ...
         DMLCD.HandleItemInfoReceived(itemId, success)
+    elseif event == "BAG_UPDATE" then
+        -- Quantity/charge refresh only. Do not resolve item metadata here; the
+        -- bounded item-info system intentionally stays independent of bag churn.
+        DMLCD.RefreshItemCountVisuals()
     elseif event == "ACTIONBAR_UPDATE_USABLE" or event == "UNIT_MANA" or event == "UNIT_RAGE" or
         event == "UNIT_ENERGY" or event == "UNIT_RUNIC_POWER" or event == "UNIT_DISPLAYPOWER"
     then
@@ -8080,6 +8480,9 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
                 UpdateButtonCooldownVisual(button, true)
             end
         end)
+        if event == "BAG_UPDATE_COOLDOWN" then
+            DMLCD.RefreshItemCountVisuals()
+        end
         DMLCD.RefreshPetBar()
     elseif event == "PLAYER_ENTERING_WORLD" then
         if not spellbookSnapshotReady then
@@ -8088,10 +8491,14 @@ eventFrame:SetScript("OnEvent", function(_, event, ...)
         RefreshAllButtons()
         ApplySavedKeybinds()
         DMLCD.ApplyPetBarSettings()
+        DMLCD.ApplyTotemBarSettings()
         DMLCD.RefreshPetBar()
         ScheduleBlizzardBarRefresh(0.1)
         SaveCharacterLayoutSnapshot()
     elseif event == "PLAYER_LOGOUT" then
+        if DB and DB.useDMLTotemBar and not IsInCombat() then
+            DMLCD.RestoreNativeTotemBar()
+        end
         SaveAllPositions()
         SaveCharacterLayoutSnapshot()
     end

@@ -1,4 +1,17 @@
-DML COOLDOWN BAR 2.0.84 - UNIVERSAL BUILD
+DML COOLDOWN BAR 2.0.85 - UNIVERSAL BUILD
+
+2.0.85 shared bar updates
+-------------------------
+- Assigned items show their current bag quantity. Charged items use Wrath's
+  GetItemCount(..., includeUses=true) behavior so available uses can be shown.
+- Item buttons fade when the item is no longer in the player's bags or has no
+  remaining uses/charges. BAG_UPDATE only refreshes counts; it does not re-run
+  item metadata queries.
+- Optional Use DML totem bar setting for Wrath shamans. DML moves Blizzard's
+  native MultiCastActionBarFrame to a saved movable DML anchor instead of
+  recreating the protected totem controls, preserving elemental slot flyouts,
+  Call summon pages, recall, and SetMultiCastSpell selection behavior.
+
 World of Warcraft 3.3.5a
 
 PURPOSE

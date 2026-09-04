@@ -1,3 +1,12 @@
+DML Cooldown Bar 2.0.85
+
+- Added item quantity / charge-use text to DML item buttons.
+- Item buttons now fade when the assigned item has zero available uses or is no longer in the player's bags.
+- BAG_UPDATE is used only for lightweight item-count refreshes; item metadata remains on the bounded 2.0.83+ query path.
+- Added Use DML totem bar. It moves Blizzard's native Wrath MultiCastActionBarFrame onto a movable DML anchor, preserving native totem flyouts and selection.
+- Totem bar position participates in profiles, Reset Positions, Show anchors, Lock bars, and Background settings.
+- Universal J3 integration remains optional and unchanged; these core features work with or without J3.
+
 DML Cooldown Bar 2.0.84
 
 - Unified the previous private-server and Native forks into one core addon.
