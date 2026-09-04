@@ -1,4 +1,4 @@
-DML Quest Tracker 2.0.109 - in-game checklist
+DML Quest Tracker 2.0.112 - in-game checklist
 
 [ ] Quest Tracker launcher entry opens DMLQuestTracker settings.
 [ ] With DMLQuestTracker folder removed, Quest Tracker launcher entry is grayed out.
@@ -22,3 +22,8 @@ DML Quest Tracker 2.0.109 - in-game checklist
 [ ] Show anchors and Lock tracker work normally after scaling.
 [ ] Position persists across /reload.
 [ ] Quest level colors refresh after leveling up.
+
+[ ] Half-width anchor is aligned flush to the tracker top-left edge, not centered.
+
+[ ] Dragging left/top/right/bottom is bounded by the 155 px anchor, not the 310 px tracker body/background.
+[ ] The anchor can sit flush against each screen edge while the tracker body is allowed to extend off-screen.

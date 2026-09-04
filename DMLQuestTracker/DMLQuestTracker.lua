@@ -5,7 +5,7 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.110"
+QT.VERSION = "2.0.112"
 QT.WIDTH = 310
 QT.HEADER_HEIGHT = 24
 QT.QUEST_MIN_HEIGHT = 18
@@ -155,6 +155,29 @@ local function GetFontStringHeight(fontString, minimum)
     return math.ceil(height)
 end
 
+local function UpdateAnchorClampInsets()
+    if not container or not container.SetClampRectInsets then return end
+
+    -- The movement boundary belongs to the compact drag anchor, not the
+    -- full quest-tracker body.  The container itself is still the movable
+    -- frame, so adjust its clamp rectangle to match the anchor's footprint:
+    --   left   = anchor left edge (same as container left)
+    --   right  = allow the tracker body beyond the anchor to leave the screen
+    --   top    = keep the anchor's top edge on-screen
+    --   bottom = allow the tracker body below the anchor to leave the screen
+    local height = tonumber(container:GetHeight()) or (QT.HEADER_HEIGHT + QT.BOTTOM_PADDING)
+    local rightOverflow = math.max(0, QT.WIDTH - QT.ANCHOR_WIDTH)
+    local anchorTopOffset = QT.ANCHOR_HEIGHT + QT.ANCHOR_GAP
+    local bodyBelowAnchor = height + QT.ANCHOR_GAP
+
+    container:SetClampRectInsets(
+        0,
+        -rightOverflow,
+        anchorTopOffset,
+        bodyBelowAnchor
+    )
+end
+
 local function SavePosition()
     if not container or not DB then return end
     local point, _, relativePoint, x, y = container:GetPoint(1)
@@ -168,6 +191,7 @@ end
 
 local function RestorePosition()
     if not container or not DB then return end
+    UpdateAnchorClampInsets()
     container:ClearAllPoints()
     container:SetPoint(
         DB.position.point or defaults.position.point,
@@ -316,6 +340,7 @@ local function ApplyAppearance()
 
     if container and container.SetScale then
         container:SetScale(SnapScale(DB.trackerScale))
+        UpdateAnchorClampInsets()
     end
 
     if tracker and tracker.SetBackdropColor then
@@ -464,7 +489,7 @@ local function CreateTrackerFrames()
     anchor = CreateFrame("Frame", "DMLUIQuestTrackerAnchor", container)
     anchor:SetWidth(QT.ANCHOR_WIDTH)
     anchor:SetHeight(QT.ANCHOR_HEIGHT)
-    anchor:SetPoint("BOTTOM", tracker, "TOP", 0, QT.ANCHOR_GAP)
+    anchor:SetPoint("BOTTOMLEFT", tracker, "TOPLEFT", 0, QT.ANCHOR_GAP)
     anchor:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -491,6 +516,7 @@ local function CreateTrackerFrames()
         SavePosition()
     end)
 
+    UpdateAnchorClampInsets()
     RestorePosition()
     ApplyAppearance()
     container:Hide()
@@ -519,6 +545,7 @@ function QT:Refresh()
     if DB.collapsed then
         tracker:SetHeight(QT.HEADER_HEIGHT + 5)
         container:SetHeight(QT.HEADER_HEIGHT + 5)
+        UpdateAnchorClampInsets()
         UpdateAnchorVisibility()
         refreshing = false
         return
@@ -597,6 +624,7 @@ function QT:Refresh()
     local neededHeight = math.max(QT.HEADER_HEIGHT + 5, -y + QT.BOTTOM_PADDING)
     tracker:SetHeight(neededHeight)
     container:SetHeight(neededHeight)
+    UpdateAnchorClampInsets()
     UpdateAnchorVisibility()
     refreshing = false
 end
