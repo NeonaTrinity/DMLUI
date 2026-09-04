@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.95"
+UF.VERSION = "2.0.96"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -28,7 +28,10 @@ UF.PARTY_SPACING_MAX = 150
 UF.FADE_PERCENT_MIN = 10
 UF.FADE_PERCENT_MAX = 90
 UF.DYNAMIC_UPDATE_INTERVAL = 0.20
-UF.RANGE_OPTIONS = { 15, 25, 30, 35, 40 }
+UF.RANGE_LIST_LIMIT = 18
+UF.RANGE_MIN_YARDS = 20
+UF.CAST_BAR_HEIGHT = 14
+UF.CAST_BAR_GAP = 3
 UF.DYNAMIC_MEMBER_KEYS = { "player", "party1", "party2", "party3", "party4" }
 
 local DB
@@ -107,7 +110,7 @@ UF.partyGroupMover = nil
 UF.partyGroupHandle = nil
 
 local defaults = {
-    version = 4,
+    version = 5,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -129,11 +132,17 @@ local defaults = {
     highlightAggro = false,
     displayCombatIcon = false,
     fadePartyOutOfRange = false,
-    partyRange = 40,
+    partyRangeSpell = "",
     partyFadePercent = 35,
     fadeTargetOutOfRange = false,
-    targetRange = 40,
+    targetRangeSpell = "",
     targetFadePercent = 35,
+    showPlayerCastBar = false,
+    playerCastBarPosition = "BELOW",
+    showTargetCastBar = false,
+    targetCastBarPosition = "BELOW",
+    showTargetTargetCastBar = false,
+    targetTargetCastBarPosition = "BELOW",
     positions = {},
     frameScales = {},
     partyGroupPosition = nil,
@@ -169,21 +178,6 @@ local function ClampFadePercent(value)
     if value < UF.FADE_PERCENT_MIN then value = UF.FADE_PERCENT_MIN end
     if value > UF.FADE_PERCENT_MAX then value = UF.FADE_PERCENT_MAX end
     return math.floor(value + 0.5)
-end
-
-local function ClampRange(value)
-    value = tonumber(value) or 40
-    local best = UF.RANGE_OPTIONS[1]
-    local bestDiff = math.abs(value - best)
-    for idx = 2, #UF.RANGE_OPTIONS do
-        local candidate = UF.RANGE_OPTIONS[idx]
-        local diff = math.abs(value - candidate)
-        if diff < bestDiff then
-            best = candidate
-            bestDiff = diff
-        end
-    end
-    return best
 end
 
 local function CopyDefaults(reset)
@@ -236,11 +230,17 @@ local function CopyDefaults(reset)
     DB.highlightAggro = DB.highlightAggro and true or false
     DB.displayCombatIcon = DB.displayCombatIcon and true or false
     DB.fadePartyOutOfRange = DB.fadePartyOutOfRange and true or false
-    DB.partyRange = ClampRange(DB.partyRange)
+    DB.partyRangeSpell = type(DB.partyRangeSpell) == "string" and DB.partyRangeSpell or ""
     DB.partyFadePercent = ClampFadePercent(DB.partyFadePercent)
     DB.fadeTargetOutOfRange = DB.fadeTargetOutOfRange and true or false
-    DB.targetRange = ClampRange(DB.targetRange)
+    DB.targetRangeSpell = type(DB.targetRangeSpell) == "string" and DB.targetRangeSpell or ""
     DB.targetFadePercent = ClampFadePercent(DB.targetFadePercent)
+    DB.showPlayerCastBar = DB.showPlayerCastBar and true or false
+    if DB.playerCastBarPosition ~= "ABOVE" then DB.playerCastBarPosition = "BELOW" end
+    DB.showTargetCastBar = DB.showTargetCastBar and true or false
+    if DB.targetCastBarPosition ~= "ABOVE" then DB.targetCastBarPosition = "BELOW" end
+    DB.showTargetTargetCastBar = DB.showTargetTargetCastBar and true or false
+    if DB.targetTargetCastBarPosition ~= "ABOVE" then DB.targetTargetCastBarPosition = "BELOW" end
 
     if type(DB.positions) ~= "table" then DB.positions = {} end
     if type(DB.frameScales) ~= "table" then DB.frameScales = {} end
@@ -563,104 +563,133 @@ local function SetPowerColor(statusBar, unit)
     end
 end
 
-local rangeSpellSlots = { friend = {}, harm = {} }
+local rangeSpellLists = { friend = {}, harm = {} }
+local rangeSpellLookup = { friend = {}, harm = {} }
+
+local function GetSpellBookRangeCandidate(slot)
+    if not GetSpellInfo then return nil end
+    local name, rank, icon, castTime, minRange, maxRange, spellID = GetSpellInfo(slot, BOOKTYPE_SPELL)
+    if not name and GetSpellName then
+        name, rank = GetSpellName(slot, BOOKTYPE_SPELL)
+        if name then
+            name, rank, icon, castTime, minRange, maxRange, spellID = GetSpellInfo(name)
+        end
+    end
+    maxRange = tonumber(maxRange) or 0
+    minRange = tonumber(minRange) or 0
+    if not name or maxRange < UF.RANGE_MIN_YARDS then return nil end
+    return {
+        name = name,
+        rank = rank or "",
+        icon = icon,
+        castTime = tonumber(castTime) or 0,
+        minRange = minRange,
+        range = maxRange,
+        spellID = tonumber(spellID),
+        slot = slot
+    }
+end
+
+local function AddRangeCandidate(kind, candidate, byName)
+    if not candidate then return end
+    local existing = byName[candidate.name]
+    -- Spellbook ranks are normally ordered low -> high. Prefer the latest slot;
+    -- this keeps one entry per spell name and tracks the highest known rank.
+    if not existing or candidate.slot > existing.slot then
+        byName[candidate.name] = candidate
+    end
+end
+
+local function SortAndLimitRangeCandidates(byName)
+    local list = {}
+    for _, candidate in pairs(byName) do table.insert(list, candidate) end
+    table.sort(list, function(a, b)
+        if a.range ~= b.range then return a.range > b.range end
+        return tostring(a.name) < tostring(b.name)
+    end)
+    while #list > UF.RANGE_LIST_LIMIT do table.remove(list) end
+    return list
+end
+
+local function ChooseDefaultRangeSpell(list)
+    local best, bestDiff
+    for idx = 1, #list do
+        local candidate = list[idx]
+        local diff = math.abs((candidate.range or 0) - 40)
+        if not best or diff < bestDiff or (diff == bestDiff and candidate.range > best.range) then
+            best = candidate
+            bestDiff = diff
+        end
+    end
+    return best and best.name or ""
+end
 
 local function RebuildRangeSpellCache()
-    rangeSpellSlots = { friend = {}, harm = {} }
+    rangeSpellLists = { friend = {}, harm = {} }
+    rangeSpellLookup = { friend = {}, harm = {} }
     if not GetNumSpellTabs or not GetSpellTabInfo or not IsSpellInRange then return end
 
-    local candidates = { friend = {}, harm = {} }
+    local friendByName, harmByName = {}, {}
     local tabs = tonumber(GetNumSpellTabs()) or 0
     for tab = 1, tabs do
         local _, _, offset, numSpells = GetSpellTabInfo(tab)
         offset = tonumber(offset) or 0
         numSpells = tonumber(numSpells) or 0
         for slot = offset + 1, offset + numSpells do
-            local name = GetSpellName and GetSpellName(slot, BOOKTYPE_SPELL) or nil
-            local a, b, c, d, e, f, g, h, i9
-            if GetSpellInfo and name then
-                a, b, c, d, e, f, g, h, i9 = GetSpellInfo(name)
-            end
-            local minRange, maxRange
-            if i9 ~= nil then
-                minRange, maxRange = tonumber(h) or 0, tonumber(i9) or 0
-            else
-                -- Compatibility with clients exposing the shorter GetSpellInfo signature.
-                minRange, maxRange = tonumber(e) or 0, tonumber(f) or 0
-            end
-            if maxRange > 0 and minRange <= 0 then
-                if IsHelpfulSpell and IsHelpfulSpell(slot, BOOKTYPE_SPELL) then
-                    table.insert(candidates.friend, { slot = slot, range = maxRange })
-                end
-                if IsHarmfulSpell and IsHarmfulSpell(slot, BOOKTYPE_SPELL) then
-                    table.insert(candidates.harm, { slot = slot, range = maxRange })
+            local spellType
+            if GetSpellBookItemInfo then spellType = GetSpellBookItemInfo(slot, BOOKTYPE_SPELL) end
+            if not spellType or spellType == "SPELL" then
+                local candidate = GetSpellBookRangeCandidate(slot)
+                if candidate then
+                    if IsHelpfulSpell and IsHelpfulSpell(slot, BOOKTYPE_SPELL) then
+                        AddRangeCandidate("friend", candidate, friendByName)
+                    end
+                    if IsHarmfulSpell and IsHarmfulSpell(slot, BOOKTYPE_SPELL) then
+                        AddRangeCandidate("harm", candidate, harmByName)
+                    end
                 end
             end
         end
     end
 
-    local function choose(list, desired)
-        local best, bestDiff
-        for idx = 1, #list do
-            local entry = list[idx]
-            local diff = math.abs(entry.range - desired)
-            if diff <= 5 and (not best or diff < bestDiff or (diff == bestDiff and entry.range < best.range)) then
-                best = entry
-                bestDiff = diff
-            end
+    rangeSpellLists.friend = SortAndLimitRangeCandidates(friendByName)
+    rangeSpellLists.harm = SortAndLimitRangeCandidates(harmByName)
+    for idx = 1, #rangeSpellLists.friend do
+        local candidate = rangeSpellLists.friend[idx]
+        rangeSpellLookup.friend[candidate.name] = candidate
+    end
+    for idx = 1, #rangeSpellLists.harm do
+        local candidate = rangeSpellLists.harm[idx]
+        rangeSpellLookup.harm[candidate.name] = candidate
+    end
+
+    if DB then
+        if DB.partyRangeSpell == "" or not rangeSpellLookup.friend[DB.partyRangeSpell] then
+            DB.partyRangeSpell = ChooseDefaultRangeSpell(rangeSpellLists.friend)
         end
-        return best and best.slot or nil
-    end
-
-    for idx = 1, #UF.RANGE_OPTIONS do
-        local desired = UF.RANGE_OPTIONS[idx]
-        rangeSpellSlots.friend[desired] = choose(candidates.friend, desired)
-        rangeSpellSlots.harm[desired] = choose(candidates.harm, desired)
+        if DB.targetRangeSpell == "" or not rangeSpellLookup.harm[DB.targetRangeSpell] then
+            DB.targetRangeSpell = ChooseDefaultRangeSpell(rangeSpellLists.harm)
+        end
     end
 end
 
-local function SpellRangeCheck(kind, yards, unit)
-    local slots = rangeSpellSlots[kind]
-    local slot = slots and slots[yards]
-    if not slot or not IsSpellInRange then return nil end
-    local result = IsSpellInRange(slot, BOOKTYPE_SPELL, unit)
-    if result == 1 or result == true then return true end
-    if result == 0 or result == false then return false end
-    return nil
+local function GetSelectedRangeCandidate(kind)
+    if not DB then return nil end
+    local selectedName = kind == "friend" and DB.partyRangeSpell or DB.targetRangeSpell
+    return rangeSpellLookup[kind] and rangeSpellLookup[kind][selectedName] or nil
 end
 
-local function NativeRangeCheck(yards, unit, kind)
-    if yards >= 35 and kind == "friend" and UnitInRange then
-        local result = UnitInRange(unit)
-        if result == 1 or result == true then return true end
-        if result == 0 or result == false then return false end
-        -- On 3.3.5 UnitInRange commonly returns nil when beyond its range. If
-        -- the unit is otherwise visible/existing, keep falling through so a
-        -- spell/interact checker can still provide a useful answer.
-    end
-    if CheckInteractDistance then
-        local index = (yards <= 15) and 2 or 4
-        local result = CheckInteractDistance(unit, index)
-        if result == 1 or result == true then return true end
-        if yards <= 30 then return false end
-    end
-    return nil
-end
-
-local function IsUnitWithinConfiguredRange(unit, yards, kind)
+local function IsUnitWithinSelectedSpellRange(unit, kind)
     if not UnitExists(unit) then return true end
     if UnitIsUnit and UnitIsUnit(unit, "player") then return true end
     if UnitIsVisible and not UnitIsVisible(unit) then return false end
-
-    yards = ClampRange(yards)
-    local spellResult = SpellRangeCheck(kind, yards, unit)
-    if spellResult ~= nil then return spellResult end
-
-    local nativeResult = NativeRangeCheck(yards, unit, kind)
-    if nativeResult ~= nil then return nativeResult end
-
-    -- No trustworthy checker is available for this unit/class combination.
-    -- Prefer leaving the frame visible rather than falsely fading an in-range unit.
+    local candidate = GetSelectedRangeCandidate(kind)
+    if not candidate or not IsSpellInRange then return true end
+    local result = IsSpellInRange(candidate.slot, BOOKTYPE_SPELL, unit)
+    if result == 1 or result == true then return true end
+    if result == 0 or result == false then return false end
+    -- The spell cannot be meaningfully checked against this unit right now.
+    -- Do not falsely fade the frame.
     return true
 end
 
@@ -712,7 +741,7 @@ local function UpdateDynamicStates()
         local frame = UF.frames[key]
         if frame then
             local alpha = 1
-            if DB.fadePartyOutOfRange and UnitExists(key) and not IsUnitWithinConfiguredRange(key, DB.partyRange, "friend") then
+            if DB.fadePartyOutOfRange and UnitExists(key) and not IsUnitWithinSelectedSpellRange(key, "friend") then
                 alpha = partyAlpha
             end
             frame:SetAlpha(alpha)
@@ -733,15 +762,73 @@ local function UpdateDynamicStates()
                 end
             end
             if targetIsParty and DB.fadePartyOutOfRange then
-                if not IsUnitWithinConfiguredRange("target", DB.partyRange, "friend") then alpha = partyAlpha end
+                if not IsUnitWithinSelectedSpellRange("target", "friend") then alpha = partyAlpha end
             elseif DB.fadeTargetOutOfRange and UnitCanAttack and UnitCanAttack("player", "target") then
-                if not IsUnitWithinConfiguredRange("target", DB.targetRange, "harm") then
+                if not IsUnitWithinSelectedSpellRange("target", "harm") then
                     alpha = ClampFadePercent(DB.targetFadePercent) / 100
                 end
             end
         end
         targetFrame:SetAlpha(alpha)
     end
+end
+
+local function GetCastBarConfig(key)
+    if key == "player" then return DB.showPlayerCastBar, DB.playerCastBarPosition end
+    if key == "target" then return DB.showTargetCastBar, DB.targetCastBarPosition end
+    if key == "targettarget" then return DB.showTargetTargetCastBar, DB.targetTargetCastBarPosition end
+    return false, "BELOW"
+end
+
+local function ApplyCastBarPosition(key)
+    local frame = UF.frames[key]
+    if not frame or not frame.castBar or not DB then return end
+    local _, position = GetCastBarConfig(key)
+    local bar = frame.castBar
+    bar:ClearAllPoints()
+    if position == "ABOVE" then
+        bar:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", 0, UF.CAST_BAR_GAP)
+    else
+        bar:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", 0, -UF.CAST_BAR_GAP)
+    end
+end
+
+local function UpdateCastBar(key)
+    local frame = UF.frames[key]
+    local definition = GetDefinition(key)
+    if not frame or not frame.castBar or not definition or not DB then return end
+    local enabled = GetCastBarConfig(key)
+    if not enabled or not IsDefinitionEnabled(key, definition) or not UnitExists(definition.unit) then
+        frame.castBar:Hide()
+        return
+    end
+
+    ApplyCastBarPosition(key)
+    local unit = definition.unit
+    local name, rank, displayName, icon, startMS, endMS = UnitCastingInfo and UnitCastingInfo(unit)
+    local channeling = false
+    if not name and UnitChannelInfo then
+        name, rank, displayName, icon, startMS, endMS = UnitChannelInfo(unit)
+        channeling = name and true or false
+    end
+    if not name or not startMS or not endMS then
+        frame.castBar:Hide()
+        return
+    end
+
+    local bar = frame.castBar
+    bar.startTime = tonumber(startMS) / 1000
+    bar.endTime = tonumber(endMS) / 1000
+    bar.channeling = channeling
+    if channeling then bar:SetStatusBarColor(0.20, 0.60, 1.0) else bar:SetStatusBarColor(1.0, 0.70, 0.10) end
+    if bar.text then bar.text:SetText((displayName and displayName ~= "" and displayName) or name) end
+    bar:Show()
+end
+
+local function UpdateAllCastBars()
+    UpdateCastBar("player")
+    UpdateCastBar("target")
+    UpdateCastBar("targettarget")
 end
 
 local function UpdateFrame(key)
@@ -751,11 +838,13 @@ local function UpdateFrame(key)
 
     local unit = definition.unit
     if not IsDefinitionEnabled(key, definition) then
+        if frame.castBar then frame.castBar:Hide() end
         frame:Hide()
         return
     end
 
     if not UnitExists(unit) then
+        if frame.castBar then frame.castBar:Hide() end
         if not RegisterUnitWatch then frame:Hide() end
         return
     end
@@ -766,10 +855,25 @@ local function UpdateFrame(key)
 
     local level = UnitLevel(unit)
     if DB.showLevel and frame.levelText then
-        if tonumber(level) and tonumber(level) < 0 then frame.levelText:SetText("??") else frame.levelText:SetText(tostring(level or "")) end
-        frame.levelText:Show()
+        if tonumber(level) and tonumber(level) < 0 then
+            frame.levelText:Hide()
+            if frame.levelSkull then frame.levelSkull:Show() end
+        else
+            if frame.levelSkull then frame.levelSkull:Hide() end
+            frame.levelText:SetText(tostring(level or ""))
+            if UnitCanAttack and UnitCanAttack("player", unit) and tonumber(level) then
+                local colorFunc = GetQuestDifficultyColor or GetDifficultyColor
+                local color = colorFunc and colorFunc(tonumber(level)) or nil
+                if color then frame.levelText:SetTextColor(color.r or 1, color.g or 1, color.b or 1)
+                else frame.levelText:SetTextColor(1, 1, 1) end
+            else
+                frame.levelText:SetTextColor(1, 0.82, 0)
+            end
+            frame.levelText:Show()
+        end
     elseif frame.levelText then
         frame.levelText:Hide()
+        if frame.levelSkull then frame.levelSkull:Hide() end
     end
 
     if DB.showClass and frame.classText then
@@ -823,6 +927,7 @@ local function UpdateFrame(key)
         frame.powerBar:Hide()
         frame.powerText:Hide()
     end
+    if frame.castBar then UpdateCastBar(key) end
 end
 
 local function UpdateAllFrames()
@@ -913,6 +1018,7 @@ local function ApplyFrameActivation()
 
     ApplyBlizzardFrameVisibility()
     UpdateAllFrames()
+    UpdateAllCastBars()
     UpdateDynamicStates()
     return true
 end
@@ -1078,6 +1184,13 @@ local function CreateUnitFrame(key)
     local levelText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     levelText:SetPoint("TOPRIGHT", frame, "TOPRIGHT", metrics.levelRight, metrics.levelY)
     levelText:SetJustifyH("RIGHT")
+    local levelSkull = frame:CreateTexture(nil, "OVERLAY")
+    local skullSize = isParty and 12 or 16
+    levelSkull:SetWidth(skullSize)
+    levelSkull:SetHeight(skullSize)
+    levelSkull:SetTexture("Interface\\TargetingFrame\\UI-TargetingFrame-Skull")
+    levelSkull:SetPoint("CENTER", levelText, "CENTER", -1, 0)
+    levelSkull:Hide()
 
     local classText = frame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     classText:SetPoint("TOPLEFT", frame, "TOPLEFT", metrics.textX, metrics.classY)
@@ -1118,6 +1231,48 @@ local function CreateUnitFrame(key)
         end
     end)
     frame:SetScript("OnLeave", function() GameTooltip:Hide() end)
+
+    local castBar
+    if key == "player" or key == "target" or key == "targettarget" then
+        castBar = CreateFrame("StatusBar", "DMLUIUnitCastBar_" .. key, frame)
+        castBar:SetWidth(metrics.width)
+        castBar:SetHeight(UF.CAST_BAR_HEIGHT)
+        castBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
+        castBar:SetStatusBarColor(1.0, 0.70, 0.10)
+        castBar:SetMinMaxValues(0, 1)
+        castBar:SetValue(0)
+        castBar:SetFrameLevel(frame:GetFrameLevel() + 4)
+        castBar:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 8, edgeSize = 8,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        castBar:SetBackdropColor(0.03, 0.03, 0.03, 0.95)
+        castBar:SetBackdropBorderColor(0.35, 0.35, 0.35, 1)
+        local castText = castBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        castText:SetPoint("LEFT", castBar, "LEFT", 4, 0)
+        castText:SetWidth(metrics.width - 48)
+        castText:SetJustifyH("LEFT")
+        local castTime = castBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        castTime:SetPoint("RIGHT", castBar, "RIGHT", -4, 0)
+        castTime:SetJustifyH("RIGHT")
+        castBar.text = castText
+        castBar.timeText = castTime
+        castBar.unit = definition.unit
+        castBar.ownerKey = key
+        castBar:Hide()
+        castBar:SetScript("OnUpdate", function(self)
+            if not self.startTime or not self.endTime then return end
+            local now = GetTime and GetTime() or 0
+            local duration = math.max(0.001, self.endTime - self.startTime)
+            local remaining = math.max(0, self.endTime - now)
+            self:SetMinMaxValues(0, duration)
+            if self.channeling then self:SetValue(remaining) else self:SetValue(math.max(0, now - self.startTime)) end
+            if self.timeText then self.timeText:SetText(string.format("%.1f", remaining)) end
+            if remaining <= 0 then self:Hide() end
+        end)
+    end
 
     local handle = CreateFrame("Frame", "DMLUIUnitFrameHandle_" .. key, mover)
     handle:EnableMouse(true)
@@ -1166,11 +1321,13 @@ local function CreateUnitFrame(key)
     frame.combatIcon = combatIcon
     frame.nameText = nameText
     frame.levelText = levelText
+    frame.levelSkull = levelSkull
     frame.classText = classText
     frame.healthBar = healthBar
     frame.healthText = healthText
     frame.powerBar = powerBar
     frame.powerText = powerText
+    frame.castBar = castBar
     UF.movers[key] = mover
     UF.frames[key] = frame
     UF.handles[key] = handle
@@ -1374,6 +1531,21 @@ local function RefreshPartyLayoutControls()
     RefreshPartyControlEnableState()
 end
 
+local function SetRangeDropDownSelectedIcon(dropdown, candidate)
+    if not dropdown or not dropdown.dmlSelectedIcon then return end
+    if candidate and candidate.icon then
+        dropdown.dmlSelectedIcon:SetTexture(candidate.icon)
+        dropdown.dmlSelectedIcon:Show()
+    else
+        dropdown.dmlSelectedIcon:Hide()
+    end
+end
+
+local function FormatRangeCandidate(candidate)
+    if not candidate then return "No ranged spell" end
+    return tostring(candidate.name) .. " - " .. tostring(math.floor((candidate.range or 0) + 0.5)) .. " yd"
+end
+
 local function RefreshRangeControlEnableState()
     if not configFrame then return end
     local partyEnabled = configControls.fadePartyOutOfRange and configControls.fadePartyOutOfRange:GetChecked()
@@ -1387,18 +1559,50 @@ end
 local function RefreshRangeControls()
     if not configFrame or not DB then return end
     rangeControlsRefreshing = true
+    local partyCandidate = GetSelectedRangeCandidate("friend")
+    local targetCandidate = GetSelectedRangeCandidate("harm")
     if configControls.partyRangeDropDown then
-        if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(configControls.partyRangeDropDown, DB.partyRange) end
-        if UIDropDownMenu_SetText then UIDropDownMenu_SetText(configControls.partyRangeDropDown, tostring(DB.partyRange) .. " yd") end
+        if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(configControls.partyRangeDropDown, DB.partyRangeSpell) end
+        if UIDropDownMenu_SetText then UIDropDownMenu_SetText(configControls.partyRangeDropDown, FormatRangeCandidate(partyCandidate)) end
+        SetRangeDropDownSelectedIcon(configControls.partyRangeDropDown, partyCandidate)
     end
     if configControls.targetRangeDropDown then
-        if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(configControls.targetRangeDropDown, DB.targetRange) end
-        if UIDropDownMenu_SetText then UIDropDownMenu_SetText(configControls.targetRangeDropDown, tostring(DB.targetRange) .. " yd") end
+        if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(configControls.targetRangeDropDown, DB.targetRangeSpell) end
+        if UIDropDownMenu_SetText then UIDropDownMenu_SetText(configControls.targetRangeDropDown, FormatRangeCandidate(targetCandidate)) end
+        SetRangeDropDownSelectedIcon(configControls.targetRangeDropDown, targetCandidate)
     end
     if configControls.partyFadeEdit then configControls.partyFadeEdit:SetText(tostring(DB.partyFadePercent)) end
     if configControls.targetFadeEdit then configControls.targetFadeEdit:SetText(tostring(DB.targetFadePercent)) end
     rangeControlsRefreshing = false
     RefreshRangeControlEnableState()
+end
+
+local function RefreshCastBarControlEnableState()
+    if not configFrame then return end
+    local playerOn = configControls.showPlayerCastBar and configControls.showPlayerCastBar:GetChecked()
+    local targetOn = configControls.showTargetCastBar and configControls.showTargetCastBar:GetChecked()
+    local totOn = configControls.showTargetTargetCastBar and configControls.showTargetTargetCastBar:GetChecked()
+    SetWidgetEnabled(configControls.playerCastBarPosition, playerOn and true or false)
+    SetWidgetEnabled(configControls.targetCastBarPosition, targetOn and true or false)
+    SetWidgetEnabled(configControls.targetTargetCastBarPosition, totOn and true or false)
+end
+
+local function RefreshCastBarControls()
+    if not configFrame or not DB then return end
+    local rows = {
+        { key = "player", value = DB.playerCastBarPosition },
+        { key = "target", value = DB.targetCastBarPosition },
+        { key = "targetTarget", value = DB.targetTargetCastBarPosition }
+    }
+    for i = 1, #rows do
+        local row = rows[i]
+        local dd = configControls[row.key .. "CastBarPosition"]
+        if dd then
+            if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(dd, row.value) end
+            if UIDropDownMenu_SetText then UIDropDownMenu_SetText(dd, row.value == "ABOVE" and "Above" or "Below") end
+        end
+    end
+    RefreshCastBarControlEnableState()
 end
 
 local function RefreshConfig()
@@ -1423,9 +1627,13 @@ local function RefreshConfig()
     configControls.displayCombatIcon:SetChecked(DB.displayCombatIcon and 1 or nil)
     configControls.fadePartyOutOfRange:SetChecked(DB.fadePartyOutOfRange and 1 or nil)
     configControls.fadeTargetOutOfRange:SetChecked(DB.fadeTargetOutOfRange and 1 or nil)
+    configControls.showPlayerCastBar:SetChecked(DB.showPlayerCastBar and 1 or nil)
+    configControls.showTargetCastBar:SetChecked(DB.showTargetCastBar and 1 or nil)
+    configControls.showTargetTargetCastBar:SetChecked(DB.showTargetTargetCastBar and 1 or nil)
     RefreshPartyLayoutControls()
     RefreshAdjustmentControls()
     RefreshRangeControls()
+    RefreshCastBarControls()
 end
 
 local function ApplyConfig()
@@ -1454,9 +1662,13 @@ local function ApplyConfig()
     DB.displayCombatIcon = configControls.displayCombatIcon:GetChecked() and true or false
     DB.fadePartyOutOfRange = configControls.fadePartyOutOfRange:GetChecked() and true or false
     DB.fadeTargetOutOfRange = configControls.fadeTargetOutOfRange:GetChecked() and true or false
+    DB.showPlayerCastBar = configControls.showPlayerCastBar:GetChecked() and true or false
+    DB.showTargetCastBar = configControls.showTargetCastBar:GetChecked() and true or false
+    DB.showTargetTargetCastBar = configControls.showTargetTargetCastBar:GetChecked() and true or false
     if DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange then RebuildRangeSpellCache() end
 
     ApplyFrameActivation()
+    UpdateAllCastBars()
     RefreshConfig()
     Print("Unit frame configuration applied.")
     return true
@@ -1545,7 +1757,7 @@ local function CreateConfigFrame()
 
     configFrame = CreateFrame("Frame", "DMLUIUnitFramesConfigFrame", UIParent)
     configFrame:SetWidth(560)
-    configFrame:SetHeight(730)
+    configFrame:SetHeight(810)
     configFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     configFrame:SetFrameStrata("DIALOG")
     configFrame:SetFrameLevel(100)
@@ -1743,26 +1955,41 @@ local function CreateConfigFrame()
 
     local fadePartyCheck = CreateCheckField(configFrame, "fadePartyOutOfRange", "Fade party frames when out of range", 300, -530)
     fadePartyCheck:SetScript("OnClick", RefreshRangeControlEnableState)
-    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 300, -590)
+    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 300, -625)
     fadeTargetCheck:SetScript("OnClick", RefreshRangeControlEnableState)
 
-    local function CreateRangeRow(prefix, y, rangeKey, fadeKey)
-        local rangeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        rangeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, y)
-        rangeLabel:SetText("Range:")
+    local function CreateSpellRangeRow(prefix, kind, y, spellKey, fadeKey)
+        local spellLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        spellLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, y)
+        spellLabel:SetText("Spell:")
+
+        local icon = configFrame:CreateTexture(nil, "ARTWORK")
+        icon:SetWidth(18)
+        icon:SetHeight(18)
+        icon:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 350, y + 5)
+        icon:Hide()
 
         local dd = CreateFrame("Frame", "DMLUIUnitFrames" .. prefix .. "RangeDropDown", configFrame, "UIDropDownMenuTemplate")
-        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 344, y + 17)
-        UIDropDownMenu_SetWidth(dd, 70)
+        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 360, y + 19)
+        UIDropDownMenu_SetWidth(dd, 155)
         UIDropDownMenu_Initialize(dd, function()
-            for r = 1, #UF.RANGE_OPTIONS do
-                local yards = UF.RANGE_OPTIONS[r]
+            local list = rangeSpellLists[kind] or {}
+            if #list == 0 then
                 local info = UIDropDownMenu_CreateInfo()
-                info.text = tostring(yards) .. " yd"
-                info.value = yards
-                info.checked = (DB[rangeKey] == yards)
+                info.text = "No suitable known spells"
+                info.disabled = true
+                UIDropDownMenu_AddButton(info)
+                return
+            end
+            for r = 1, #list do
+                local candidate = list[r]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = FormatRangeCandidate(candidate)
+                info.value = candidate.name
+                info.icon = candidate.icon
+                info.checked = (DB[spellKey] == candidate.name)
                 info.func = function(button)
-                    DB[rangeKey] = ClampRange(button.value or yards)
+                    DB[spellKey] = button.value or candidate.name
                     RefreshRangeControls()
                     UpdateDynamicStates()
                 end
@@ -1770,16 +1997,17 @@ local function CreateConfigFrame()
             end
         end)
         dd.dmlIsDropDown = true
-        dd.dmlLabel = rangeLabel
+        dd.dmlLabel = spellLabel
+        dd.dmlSelectedIcon = icon
 
         local fadeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fadeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 432, y)
+        fadeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, y - 31)
         fadeLabel:SetText("Fade to:")
 
         local edit = CreateFrame("EditBox", "DMLUIUnitFrames" .. prefix .. "FadeEdit", configFrame, "InputBoxTemplate")
         edit:SetWidth(42)
         edit:SetHeight(20)
-        edit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 478, y + 4)
+        edit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 365, y - 27)
         edit:SetAutoFocus(false)
         edit:SetNumeric(true)
         edit:SetMaxLetters(2)
@@ -1807,8 +2035,43 @@ local function CreateConfigFrame()
         return dd, edit
     end
 
-    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateRangeRow("Party", -566, "partyRange", "partyFadePercent")
-    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateRangeRow("Target", -626, "targetRange", "targetFadePercent")
+    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateSpellRangeRow("Party", "friend", -562, "partyRangeSpell", "partyFadePercent")
+    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateSpellRangeRow("Target", "harm", -657, "targetRangeSpell", "targetFadePercent")
+
+    local castSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -630)
+    castSection:SetText("Cast bars")
+
+    local function CreateCastBarRow(controlKey, labelText, y, dbPositionKey)
+        local check = CreateCheckField(configFrame, controlKey, labelText, 40, y)
+        check:SetScript("OnClick", RefreshCastBarControlEnableState)
+        local dd = CreateFrame("Frame", "DMLUIUnitFrames" .. controlKey .. "PositionDropDown", configFrame, "UIDropDownMenuTemplate")
+        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 190, y + 17)
+        UIDropDownMenu_SetWidth(dd, 82)
+        UIDropDownMenu_Initialize(dd, function()
+            local options = { { value = "ABOVE", text = "Above" }, { value = "BELOW", text = "Below" } }
+            for j = 1, #options do
+                local option = options[j]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = option.text
+                info.value = option.value
+                info.checked = (DB[dbPositionKey] == option.value)
+                info.func = function(button)
+                    DB[dbPositionKey] = button.value or option.value
+                    RefreshCastBarControls()
+                    UpdateAllCastBars()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+        dd.dmlIsDropDown = true
+        configControls[dbPositionKey] = dd
+        return check, dd
+    end
+
+    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -650, "playerCastBarPosition")
+    CreateCastBarRow("showTargetCastBar", "Target cast bar", -680, "targetCastBarPosition")
+    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -710, "targetTargetCastBarPosition")
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
     apply:SetWidth(75)
@@ -1912,6 +2175,14 @@ eventFrame:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE")
 eventFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_START")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_STOP")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_FAILED")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
+eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
 eventFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == "DMLUnitFrames" then Initialize() end
@@ -1924,15 +2195,22 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
         UpdateAllFrames()
         ApplyBlizzardFrameVisibility()
         ApplyPartyLayout()
+        UpdateAllCastBars()
         UpdateDynamicStates()
     elseif event == "SPELLS_CHANGED" or event == "PLAYER_TALENT_UPDATE" then
         rangeCacheDirty = true
         rangeCacheElapsed = 0
+    elseif string.find(event, "UNIT_SPELLCAST", 1, true) == 1 then
+        if arg1 == "player" then UpdateCastBar("player")
+        elseif arg1 == "target" then UpdateCastBar("target")
+        elseif arg1 == "targettarget" then UpdateCastBar("targettarget") end
     elseif event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE" or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
         UpdateDynamicStates()
     elseif event == "PLAYER_TARGET_CHANGED" then
         UpdateFrame("target")
         UpdateFrame("targettarget")
+        UpdateCastBar("target")
+        UpdateCastBar("targettarget")
     elseif event == "PLAYER_FOCUS_CHANGED" then
         UpdateFrame("focus")
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "PARTY_MEMBER_ENABLE" or event == "PARTY_MEMBER_DISABLE" then
@@ -1951,6 +2229,7 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
         end
     elseif event == "UNIT_TARGET" and arg1 == "target" then
         UpdateFrame("targettarget")
+        UpdateCastBar("targettarget")
     elseif arg1 == "player" then
         UpdateFrame("player")
     elseif arg1 == "target" then
@@ -1984,6 +2263,7 @@ eventFrame:SetScript("OnUpdate", function(_, elapsed)
             rangeCacheDirty = false
             rangeCacheElapsed = 0
             RebuildRangeSpellCache()
+            if configFrame then RefreshRangeControls() end
         end
     end
     if not (DB.highlightAggro or DB.displayCombatIcon or DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange) then return end

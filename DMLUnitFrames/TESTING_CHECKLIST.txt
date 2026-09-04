@@ -1,42 +1,31 @@
-DMLUI Unit Frames 2.0.95 - test checklist
+DMLUI Unit Frames 2.0.96 - test checklist
 
-TARGET OF TARGET
-- With Show target's target ON and Override Blizzard target of target frame OFF, Blizzard ToT remains visible and the DML ToT is not duplicated.
-- With Show ON and Override ON, Blizzard ToT is hidden and the DML ToT is shown.
-- With Show OFF, both stock and DML ToT are hidden regardless of Override.
+Core frame behavior
+[ ] Player/Target/Focus/Pet/ToT/Party frames enable and disable correctly.
+[ ] Left-click targets; right-click opens the normal Blizzard unit menu.
+[ ] Frame scales clamp to 0.50x-2.00x; All applies uniformly.
+[ ] Grouped/freeform party positions remain separate and spacing applies only in grouped mode.
 
-AGGRO / COMBAT
-- Enable Highlight unit frame aggro. Pull a mob on Player and Party members; the unit currently tanking/holding aggro gets a red frame border.
-- Enable Display combat icon. Player and Party member frames show crossed swords while UnitAffectingCombat is true and hide them afterward.
-- Pet / Party Pet / Target / Focus frames do not receive these Player/Party-specific indicators.
+Range fading
+[ ] Party spell dropdown contains only known ranged helpful spells and collapses duplicate ranks.
+[ ] Enemy Target spell dropdown contains only known ranged harmful spells and collapses duplicate ranks.
+[ ] Dropdown rows show spell icon, spell name and detected max range.
+[ ] A selected friendly spell fades out-of-range party members and also the Target frame when targeting that party member.
+[ ] A selected harmful spell fades an out-of-range hostile Target frame.
+[ ] Fade amount clamps to 10-90%.
+[ ] Learning/unlearning/talent changes rebuild the spell lists without /reload.
 
-PARTY RANGE FADING
-- Enable Fade party frames when out of range.
-- Test 15 / 25 / 30 / 35 / 40 yd selections where practical for the current class.
-- Fade-to numeric entry clamps to 10-90.
-- Out-of-range party frames use the chosen resulting opacity and restore alpha 1 when back in range.
-- Target an out-of-range party member; the DML Target frame uses the same party fade.
-- Disabling party fading restores all Party member and relevant Target alpha to 1.
+Levels
+[ ] Hostile Target/ToT/Focus levels use gray/green/yellow/orange/red Blizzard difficulty colors.
+[ ] Units with unknown/boss level show the stock skull instead of a numeric level.
 
-ENEMY TARGET RANGE FADING
-- Enable Fade enemy target if out of range.
-- Hostile Target fades to the configured opacity when its range checker reports out-of-range.
-- Friendly/non-party targets are not affected by the enemy-target rule.
-- Party targets continue to use the Party rule when Party fading is enabled.
+Cast bars
+[ ] Player cast bar toggle works and Above/Below placement works.
+[ ] Target cast bar toggle works for casts and channels, with Above/Below placement.
+[ ] Target-of-Target cast bar toggle works for casts and channels, with Above/Below placement.
+[ ] Cast bars track start/stop/fail/interrupt/delay/channel events and hide at completion.
+[ ] Cast bars inherit the selected unit-frame scale and match frame width.
 
-RANGE SAFETY
-- Verify no global item tooltips become stuck on Retrieving item information.
-- Unit Frames range code must not query GetItemInfo / IsItemInRange.
-- Learn/unlearn/change talents and verify no Lua errors from range-cache refreshes.
-
-BASE / PARTY REGRESSION
-- Player/Target/Focus/Pet replacements still enable independently.
-- Left click targets; right click opens Blizzard-style unit menus.
-- Frame scale remains clamped 0.50-2.00 and scales complete frames.
-- Grouped Party anchor, spacing, Right/Below pet placement, and freeform per-unit + handles still work.
-- Party Members and Party Pets retain shared scale categories.
-- Reset Frame / Reset All Frames / Reset Settings still behave as before.
-
-COMBAT SAFETY
-- Protected enable/disable/layout changes remain blocked during combat with a chat message.
-- Aggro border, combat icon, and alpha fading update during combat without moving/showing/hiding protected unit frames themselves.
+Regression
+[ ] Action Bars and J3Spells behavior is unchanged.
+[ ] No item-based range checks are introduced.
