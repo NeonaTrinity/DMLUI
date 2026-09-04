@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.92"
+UF.VERSION = "2.0.93"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -20,9 +20,9 @@ UF.PARTY_HANDLE_SIZE = 18
 UF.PARTY_GROUP_WIDTH = 220
 UF.PARTY_GROUP_ANCHOR_HEIGHT = 20
 UF.PARTY_GROUP_GAP = 4
-UF.PORTRAIT_SCALE_MIN = 0.02
-UF.PORTRAIT_SCALE_MAX = 30.0
-UF.PORTRAIT_SCALE_SLIDER_MAX = 100
+UF.FRAME_SCALE_MIN = 0.02
+UF.FRAME_SCALE_MAX = 30.0
+UF.FRAME_SCALE_SLIDER_MAX = 100
 UF.PARTY_SPACING_MIN = 0
 UF.PARTY_SPACING_MAX = 150
 
@@ -75,9 +75,7 @@ UF.order = {
 }
 UF.adjustmentOrder = {
     "player", "target", "targettarget", "focus", "pet",
-    "party", "partypet", "partygroup",
-    "party1", "partypet1", "party2", "partypet2",
-    "party3", "partypet3", "party4", "partypet4"
+    "party", "partypet", "partygroup"
 }
 UF.adjustmentLabels = {
     player = "Player",
@@ -87,15 +85,7 @@ UF.adjustmentLabels = {
     pet = "Pet",
     party = "Party Members",
     partypet = "Party Pets",
-    partygroup = "Party Group",
-    party1 = "Party 1",
-    partypet1 = "Party 1 Pet",
-    party2 = "Party 2",
-    partypet2 = "Party 2 Pet",
-    party3 = "Party 3",
-    partypet3 = "Party 3 Pet",
-    party4 = "Party 4",
-    partypet4 = "Party 4 Pet"
+    partygroup = "Party Group"
 }
 
 UF.frames = {}
@@ -107,7 +97,7 @@ UF.partyGroupMover = nil
 UF.partyGroupHandle = nil
 
 local defaults = {
-    version = 2,
+    version = 3,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -126,7 +116,7 @@ local defaults = {
     showAnchors = true,
     locked = false,
     positions = {},
-    portraitScales = {},
+    frameScales = {},
     partyGroupPosition = nil,
     partyIndividualPositions = {}
 }
@@ -141,10 +131,10 @@ local function InCombat()
     return InCombatLockdown and InCombatLockdown()
 end
 
-local function ClampPortraitScale(value)
+local function ClampFrameScale(value)
     value = tonumber(value) or 1
-    if value < UF.PORTRAIT_SCALE_MIN then value = UF.PORTRAIT_SCALE_MIN end
-    if value > UF.PORTRAIT_SCALE_MAX then value = UF.PORTRAIT_SCALE_MAX end
+    if value < UF.FRAME_SCALE_MIN then value = UF.FRAME_SCALE_MIN end
+    if value > UF.FRAME_SCALE_MAX then value = UF.FRAME_SCALE_MAX end
     return value
 end
 
@@ -192,13 +182,21 @@ local function CopyDefaults(reset)
     DB.locked = DB.locked and true or false
 
     if type(DB.positions) ~= "table" then DB.positions = {} end
-    if type(DB.portraitScales) ~= "table" then DB.portraitScales = {} end
+    if type(DB.frameScales) ~= "table" then DB.frameScales = {} end
+    -- 2.0.91/2.0.92 stored the slider values as portraitScales. The defaults
+    -- pass above creates an empty frameScales table, so migrate only when the
+    -- new table has not already been populated.
+    if type(DB.portraitScales) == "table" and next(DB.frameScales) == nil then
+        for scaleKey, scaleValue in pairs(DB.portraitScales) do
+            DB.frameScales[scaleKey] = scaleValue
+        end
+    end
     if type(DB.partyIndividualPositions) ~= "table" then DB.partyIndividualPositions = {} end
 
     local scaleKeys = { "player", "target", "targettarget", "focus", "pet", "party", "partypet" }
     for i = 1, #scaleKeys do
         local scaleKey = scaleKeys[i]
-        DB.portraitScales[scaleKey] = ClampPortraitScale(DB.portraitScales[scaleKey] or 1)
+        DB.frameScales[scaleKey] = ClampFrameScale(DB.frameScales[scaleKey] or 1)
     end
 end
 
@@ -222,7 +220,7 @@ local function IsDefinitionEnabled(key, definition)
     return DB[definition.setting] and true or false
 end
 
-local function GetPortraitScaleKey(key)
+local function GetFrameScaleKey(key)
     local definition = GetDefinition(key)
     if definition and definition.partyPet then return "partypet" end
     if definition and definition.partyMember then return "party" end
@@ -231,57 +229,50 @@ local function GetPortraitScaleKey(key)
     return key
 end
 
-local function GetPortraitScale(key)
-    local scaleKey = GetPortraitScaleKey(key)
-    if not scaleKey or not DB or type(DB.portraitScales) ~= "table" then
+local function GetFrameScale(key)
+    local scaleKey = GetFrameScaleKey(key)
+    if not scaleKey or not DB or type(DB.frameScales) ~= "table" then
         return 1
     end
-    return ClampPortraitScale(DB.portraitScales[scaleKey])
+    return ClampFrameScale(DB.frameScales[scaleKey])
 end
 
-local function ApplyPortraitScale(key)
+local function ApplyFrameScale(key)
     if key == "party" then
-        for i = 1, 4 do ApplyPortraitScale("party" .. i) end
+        for i = 1, 4 do ApplyFrameScale("party" .. i) end
         return
     elseif key == "partypet" then
-        for i = 1, 4 do ApplyPortraitScale("partypet" .. i) end
+        for i = 1, 4 do ApplyFrameScale("partypet" .. i) end
         return
     end
 
     local frame = UF.frames[key]
-    if not frame or not frame.portrait or not frame.portraitBorder then return end
-
-    local scale = GetPortraitScale(key)
-    local borderBase = frame.dmlPortraitBorderBase or 72
-    local portraitBase = frame.dmlPortraitBase or 66
-    frame.portraitBorder:SetWidth(borderBase * scale)
-    frame.portraitBorder:SetHeight(borderBase * scale)
-    frame.portrait:SetWidth(portraitBase * scale)
-    frame.portrait:SetHeight(portraitBase * scale)
+    if not frame then return end
+    frame:SetScale(GetFrameScale(key))
 end
 
-local function ApplyAllPortraitScales()
-    for i = 1, #UF.order do ApplyPortraitScale(UF.order[i]) end
+local function ApplyAllFrameScales()
+    for i = 1, #UF.order do ApplyFrameScale(UF.order[i]) end
 end
 
 local function ScaleToSliderValue(scale)
-    scale = ClampPortraitScale(scale)
-    local minValue = UF.PORTRAIT_SCALE_MIN
-    local maxValue = UF.PORTRAIT_SCALE_MAX
-    return UF.PORTRAIT_SCALE_SLIDER_MAX * (math.log(scale / minValue) / math.log(maxValue / minValue))
+    scale = ClampFrameScale(scale)
+    local minValue = UF.FRAME_SCALE_MIN
+    local maxValue = UF.FRAME_SCALE_MAX
+    return UF.FRAME_SCALE_SLIDER_MAX * (math.log(scale / minValue) / math.log(maxValue / minValue))
 end
 
 local function SliderValueToScale(value)
     value = tonumber(value) or 0
     if value < 0 then value = 0 end
-    if value > UF.PORTRAIT_SCALE_SLIDER_MAX then value = UF.PORTRAIT_SCALE_SLIDER_MAX end
-    local minValue = UF.PORTRAIT_SCALE_MIN
-    local maxValue = UF.PORTRAIT_SCALE_MAX
-    return ClampPortraitScale(minValue * math.exp(math.log(maxValue / minValue) * (value / UF.PORTRAIT_SCALE_SLIDER_MAX)))
+    if value > UF.FRAME_SCALE_SLIDER_MAX then value = UF.FRAME_SCALE_SLIDER_MAX end
+    local minValue = UF.FRAME_SCALE_MIN
+    local maxValue = UF.FRAME_SCALE_MAX
+    return ClampFrameScale(minValue * math.exp(math.log(maxValue / minValue) * (value / UF.FRAME_SCALE_SLIDER_MAX)))
 end
 
-local function FormatPortraitScale(scale)
-    scale = ClampPortraitScale(scale)
+local function FormatFrameScale(scale)
+    scale = ClampFrameScale(scale)
     if scale < 0.1 then return string.format("%.3f", scale) end
     if scale < 10 then return string.format("%.2f", scale) end
     return string.format("%.1f", scale)
@@ -384,11 +375,20 @@ local function ApplyPartyLayout()
 
     if DB.movePartyAsOne then
         RestorePartyGroupPosition()
-        local extraBelow = 0
-        if DB.showPartyPets and DB.partyPetPosition == "BELOW" then
-            extraBelow = UF.PARTY_PET_HEIGHT + 4
+        local memberScale = GetFrameScale("party")
+        local petScale = GetFrameScale("partypet")
+        local memberHeight = UF.PARTY_FRAME_HEIGHT * memberScale
+        local memberWidth = UF.PARTY_FRAME_WIDTH * memberScale
+        local petHeight = UF.PARTY_PET_HEIGHT * petScale
+        local rowHeight = memberHeight
+        if DB.showPartyPets then
+            if DB.partyPetPosition == "BELOW" then
+                rowHeight = memberHeight + 4 + petHeight
+            elseif petHeight > rowHeight then
+                rowHeight = petHeight
+            end
         end
-        local rowHeight = UF.PARTY_FRAME_HEIGHT + extraBelow + DB.partySpacing
+        rowHeight = rowHeight + DB.partySpacing
 
         for i = 1, 4 do
             local memberKey = "party" .. i
@@ -402,9 +402,9 @@ local function ApplyPartyLayout()
             if petMover and memberMover then
                 petMover:ClearAllPoints()
                 if DB.partyPetPosition == "BELOW" then
-                    petMover:SetPoint("TOPLEFT", memberMover, "BOTTOMLEFT", 0, -4)
+                    petMover:SetPoint("TOPLEFT", memberMover, "TOPLEFT", 0, -(memberHeight + 4))
                 else
-                    petMover:SetPoint("LEFT", memberMover, "RIGHT", 8, 0)
+                    petMover:SetPoint("TOPLEFT", memberMover, "TOPLEFT", memberWidth + 8, 0)
                 end
             end
         end
@@ -638,6 +638,7 @@ local function ApplyFrameActivation()
         return false
     end
 
+    ApplyAllFrameScales()
     ApplyPartyLayout()
     ApplyAnchorState()
 
@@ -660,7 +661,6 @@ local function ApplyFrameActivation()
     end
 
     ApplyBlizzardFrameVisibility()
-    ApplyAllPortraitScales()
     UpdateAllFrames()
     return true
 end
@@ -775,7 +775,13 @@ local function CreateUnitFrame(key)
     local frame = CreateFrame("Button", "DMLUIUnitFrame_" .. key, mover, "SecureUnitButtonTemplate")
     frame:SetWidth(metrics.width)
     frame:SetHeight(metrics.height)
-    frame:SetPoint("BOTTOMLEFT", mover, "BOTTOMLEFT", 0, 0)
+    -- Anchor from the top-left so changing the complete unit-frame scale keeps
+    -- its saved position stable and grows/shrinks down and to the right.
+    if isParty then
+        frame:SetPoint("TOPLEFT", mover, "TOPLEFT", 0, 0)
+    else
+        frame:SetPoint("TOPLEFT", mover, "TOPLEFT", 0, -(UF.ANCHOR_HEIGHT + UF.ANCHOR_GAP))
+    end
     frame:SetFrameStrata("MEDIUM")
     frame:SetFrameLevel(20)
     frame:RegisterForClicks("AnyUp")
@@ -901,13 +907,10 @@ local function CreateUnitFrame(key)
     frame.healthText = healthText
     frame.powerBar = powerBar
     frame.powerText = powerText
-    frame.dmlPortraitBorderBase = metrics.portraitBorder
-    frame.dmlPortraitBase = metrics.portrait
-
     UF.movers[key] = mover
     UF.frames[key] = frame
     UF.handles[key] = handle
-    ApplyPortraitScale(key)
+    ApplyFrameScale(key)
 
     if isParty then RestorePartyIndividualPosition(key) else RestorePosition(key) end
     mover:Hide()
@@ -998,8 +1001,8 @@ end
 local function RefreshAdjustmentControls()
     if not configFrame or not DB then return end
     local dropdown = configControls.adjustmentUnit
-    local slider = configControls.portraitScaleSlider
-    local edit = configControls.portraitScaleEdit
+    local slider = configControls.frameScaleSlider
+    local edit = configControls.frameScaleEdit
     if not dropdown or not slider or not edit then return end
 
     local label = UF.adjustmentLabels[adjustmentSelection] or adjustmentSelection
@@ -1009,11 +1012,11 @@ local function RefreshAdjustmentControls()
     if UIDropDownMenu_SetText then UIDropDownMenu_SetText(dropdown, label) end
 
     if scaleKey then
-        local scale = GetPortraitScale(scaleKey)
+        local scale = GetFrameScale(scaleKey)
         if slider.Enable then slider:Enable() end
         if edit.Enable then edit:Enable() end
         slider:SetValue(ScaleToSliderValue(scale))
-        edit:SetText(FormatPortraitScale(scale))
+        edit:SetText(FormatFrameScale(scale))
     else
         if slider.Disable then slider:Disable() end
         if edit.Disable then edit:Disable() end
@@ -1022,13 +1025,18 @@ local function RefreshAdjustmentControls()
     adjustmentRefreshing = false
 end
 
-local function SetSelectedPortraitScale(value)
+local function SetSelectedFrameScale(value)
     if not DB then return end
+    if InCombat() then
+        RefreshAdjustmentControls()
+        return
+    end
     local scaleKey = GetAdjustmentScaleKey(adjustmentSelection)
     if not scaleKey then return end
-    local scale = ClampPortraitScale(value)
-    DB.portraitScales[scaleKey] = scale
-    ApplyPortraitScale(scaleKey)
+    local scale = ClampFrameScale(value)
+    DB.frameScales[scaleKey] = scale
+    ApplyFrameScale(scaleKey)
+    if scaleKey == "party" or scaleKey == "partypet" then ApplyPartyLayout() end
     RefreshAdjustmentControls()
 end
 
@@ -1126,7 +1134,7 @@ local function ResetSelectedFrame()
     end
     local key = adjustmentSelection
     local scaleKey = GetAdjustmentScaleKey(key)
-    if scaleKey then DB.portraitScales[scaleKey] = 1 end
+    if scaleKey then DB.frameScales[scaleKey] = 1 end
 
     if key == "partygroup" then
         DB.partyGroupPosition = nil
@@ -1144,7 +1152,7 @@ local function ResetSelectedFrame()
         RestorePosition(key)
     end
 
-    if scaleKey then ApplyPortraitScale(scaleKey) end
+    if scaleKey then ApplyFrameScale(scaleKey) end
     ApplyPartyLayout()
     ApplyAnchorState()
     RefreshConfig()
@@ -1161,17 +1169,17 @@ local function ResetAllFrames()
     DB.partyIndividualPositions = {}
     DB.partySpacing = defaults.partySpacing
     DB.partyPetPosition = defaults.partyPetPosition
-    DB.portraitScales = {
+    DB.frameScales = {
         player = 1, target = 1, targettarget = 1, focus = 1, pet = 1,
         party = 1, partypet = 1
     }
     for i = 1, #UF.baseOrder do RestorePosition(UF.baseOrder[i]) end
     RestorePartyGroupPosition()
-    ApplyAllPortraitScales()
+    ApplyAllFrameScales()
     ApplyPartyLayout()
     ApplyAnchorState()
     RefreshConfig()
-    Print("All DML unit frame positions and portrait sizes reset.")
+    Print("All DML unit frame positions and frame sizes reset.")
 end
 
 local function ResetDefaults()
@@ -1312,7 +1320,7 @@ local function CreateConfigFrame()
 
     local section4 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     section4:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -344)
-    section4:SetText("Frame / portrait adjustment")
+    section4:SetText("Frame / size adjustment")
     local unitLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     unitLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -376)
     unitLabel:SetText("Frame:")
@@ -1337,26 +1345,26 @@ local function CreateConfigFrame()
 
     local scaleLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     scaleLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -425)
-    scaleLabel:SetText("Portrait scale:")
-    local slider = CreateFrame("Slider", "DMLUIUnitFramesPortraitScaleSlider", configFrame, "OptionsSliderTemplate")
+    scaleLabel:SetText("Frame scale:")
+    local slider = CreateFrame("Slider", "DMLUIUnitFramesFrameScaleSlider", configFrame, "OptionsSliderTemplate")
     slider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 123, -417)
     slider:SetWidth(155)
     slider:SetHeight(16)
-    slider:SetMinMaxValues(0, UF.PORTRAIT_SCALE_SLIDER_MAX)
+    slider:SetMinMaxValues(0, UF.FRAME_SCALE_SLIDER_MAX)
     slider:SetValueStep(1)
-    _G[slider:GetName() .. "Low"]:SetText(tostring(UF.PORTRAIT_SCALE_MIN))
-    _G[slider:GetName() .. "High"]:SetText(tostring(UF.PORTRAIT_SCALE_MAX))
-    _G[slider:GetName() .. "Text"]:SetText("Portrait size")
+    _G[slider:GetName() .. "Low"]:SetText(tostring(UF.FRAME_SCALE_MIN))
+    _G[slider:GetName() .. "High"]:SetText(tostring(UF.FRAME_SCALE_MAX))
+    _G[slider:GetName() .. "Text"]:SetText("Unit frame size")
     slider:SetScript("OnValueChanged", function(_, value)
         if adjustmentRefreshing then return end
-        SetSelectedPortraitScale(SliderValueToScale(value))
+        SetSelectedFrameScale(SliderValueToScale(value))
     end)
-    configControls.portraitScaleSlider = slider
+    configControls.frameScaleSlider = slider
 
     local valueLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     valueLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 93, -470)
     valueLabel:SetText("Scale value:")
-    local scaleEdit = CreateFrame("EditBox", "DMLUIUnitFramesPortraitScaleEdit", configFrame, "InputBoxTemplate")
+    local scaleEdit = CreateFrame("EditBox", "DMLUIUnitFramesFrameScaleEdit", configFrame, "InputBoxTemplate")
     scaleEdit:SetWidth(80)
     scaleEdit:SetHeight(22)
     scaleEdit:SetPoint("LEFT", valueLabel, "RIGHT", 8, 0)
@@ -1365,23 +1373,23 @@ local function CreateConfigFrame()
     scaleEdit:SetMaxLetters(8)
     local function CommitScale(self)
         local value = tonumber(self:GetText())
-        if value then SetSelectedPortraitScale(value) else RefreshAdjustmentControls() end
+        if value then SetSelectedFrameScale(value) else RefreshAdjustmentControls() end
         self:ClearFocus()
     end
     scaleEdit:SetScript("OnEnterPressed", CommitScale)
     scaleEdit:SetScript("OnEditFocusLost", function(self)
         if adjustmentRefreshing then return end
         local value = tonumber(self:GetText())
-        if value then SetSelectedPortraitScale(value) else RefreshAdjustmentControls() end
+        if value then SetSelectedFrameScale(value) else RefreshAdjustmentControls() end
     end)
     scaleEdit:SetScript("OnEscapePressed", function(self) RefreshAdjustmentControls(); self:ClearFocus() end)
-    configControls.portraitScaleEdit = scaleEdit
+    configControls.frameScaleEdit = scaleEdit
 
     local adjustmentNote = configFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     adjustmentNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -510)
     adjustmentNote:SetWidth(470)
     adjustmentNote:SetJustifyH("LEFT")
-    adjustmentNote:SetText("Party Members share one portrait scale; Party Pets share another. Party Group has position/spacing only. Individual party entries expose their saved freeform position while using the shared party scale.")
+    adjustmentNote:SetText("The scale changes the complete selected unit frame. Party Members share one frame scale and Party Pets share another in both grouped and freeform layouts. Party Group is position/spacing only.")
 
     local note = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     note:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -558)

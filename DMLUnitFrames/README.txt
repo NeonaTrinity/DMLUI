@@ -1,4 +1,4 @@
-DMLUI - Unit Frames 2.0.92
+DMLUI - Unit Frames 2.0.93
 
 Optional DMLUI module for WoW 3.3.5a.
 Install alongside DMLUI_Core. The Unit Frames button in the DMLUI launcher becomes active automatically.
@@ -32,7 +32,7 @@ Freeform party mode:
 - Party spacing and grouped pet-position controls are disabled/ignored.
 - Freeform positions are saved separately from the grouped layout.
 
-Frame / portrait adjustment selector:
+Frame / size adjustment selector:
 - Player
 - Target
 - Target of Target
@@ -41,16 +41,17 @@ Frame / portrait adjustment selector:
 - Party Members
 - Party Pets
 - Party Group
-- Party 1 / Party 1 Pet through Party 4 / Party 4 Pet
 
-Portrait scaling:
+Unit-frame scaling:
 - 0.02x through 30.00x with logarithmic slider movement.
 - Numeric entry is clamped to the same range.
-- Party members share one portrait scale; party pets share another.
+- Scaling resizes the complete selected unit frame: portrait, bars, text, background/border, and clickable area.
+- Party Members share one complete-frame scale; Party Pets share another in both grouped and freeform modes.
+- Individual Party 1-4 and party-pet positions remain adjustable with their freeform drag handles, but they are not separate scale-selector entries.
 
 Reset controls:
-- Reset Frame: resets the currently selected frame/category to its default position and portrait scale where applicable.
-- Reset All Frames: resets all positions, party spacing/pet placement, and portrait scales without changing enabled-frame checkboxes.
+- Reset Frame: resets the currently selected frame/category to its default position and frame scale where applicable.
+- Reset All Frames: resets all positions, party spacing/pet placement, and frame scales without changing enabled-frame checkboxes.
 - Reset Settings: restores the full Unit Frames settings set to defaults.
 
 Unit frames keep left-click targeting and Blizzard-style right-click unit menus.

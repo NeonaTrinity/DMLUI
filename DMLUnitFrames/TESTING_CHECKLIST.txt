@@ -1,11 +1,11 @@
-DMLUI Unit Frames 2.0.92 - test checklist
+DMLUI Unit Frames 2.0.93 - test checklist
 
 BASE REGRESSION
 - Open DMLUI > Unit Frames.
 - Player/Target/Focus/Pet/Target of Target still enable independently.
 - Left click targets.
 - Right click opens the Blizzard-style unit popup menu.
-- Portrait scale selector and numeric entry still clamp from 0.02 to 30.00.
+- Frame scale selector and numeric entry clamp from 0.02 to 30.00 and scale the complete selected unit frame.
 
 PARTY ENABLE / STOCK REPLACEMENT
 - Join a party with 1-4 other players.
@@ -36,19 +36,20 @@ FREEFORM MODE
 - Switch back to grouped mode; previous grouped layout should return.
 - Switch back to freeform; previous individual positions should return.
 
-PARTY PORTRAIT SCALE
-- Select Party Members and change scale; all party member portraits change together.
-- Select Party Pets and change scale; all party pet portraits change together.
-- Individual Party 1-4 entries use the Party Members shared scale.
-- Individual Party Pet entries use the Party Pets shared scale.
+PARTY FRAME SCALE
+- Selector contains Party Members, Party Pets, and Party Group, but no Party 1-4 / individual pet entries.
+- Select Party Members and change scale; all complete party member frames change together in grouped and freeform modes.
+- Select Party Pets and change scale; all complete party pet frames change together in grouped and freeform modes.
+- In grouped mode, enlarge Party Members/Party Pets and verify the row spacing accounts for scaled frame dimensions without overlap.
 
 RESET FRAME
-- Move/scale Player, select Player, click Reset Frame; Player returns to default position and portrait scale.
-- Move Party 2 in freeform, select Party 2, click Reset Frame; its saved freeform position returns to default.
+- Move/scale Player, select Player, click Reset Frame; Player returns to default position and frame scale.
+- Select Party Members, click Reset Frame; shared party-member frame scale and member freeform positions return to defaults.
+- Select Party Pets, click Reset Frame; shared party-pet frame scale and pet freeform positions return to defaults.
 - Select Party Group, click Reset Frame; grouped anchor, spacing, and grouped pet placement return to defaults.
 
 RESET ALL FRAMES
-- Customize several normal frames, grouped/freeform party positions, spacing, and portrait scales.
+- Customize several normal frames, grouped/freeform party positions, spacing, and frame scales.
 - Click Reset All Frames.
 - All positions/scales should return to defaults.
 - Enabled replacement checkboxes must NOT change.
