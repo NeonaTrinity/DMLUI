@@ -1,4 +1,4 @@
-# DMLUI 2.0.98
+# DMLUI 2.0.99
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -7,8 +7,15 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUI_Core/` - shared minimap launcher and module framework (2.0.97).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.98).
-- `DMLCastBar/` - optional movable/customizable player cast bar (unchanged from 2.0.97).
+- `DMLUnitFrames/` - Unit Frames module (2.0.99).
+- `DMLCastBar/` - optional movable/customizable player cast bar (2.0.99).
+
+## 2.0.99 highlights
+
+### Cast bars
+- Rebuilt both the standalone DML Cast Bar and Unit Frames attached cast bars on Blizzard's stock Wrath 3.3.5 `CastingBarFrameTemplate` state/event engine.
+- DML still owns width/height/position/color/border/text/time presentation; Blizzard's proven cast/channel timing engine now drives visibility and progress.
+- Player/Target/Target-of-Target attached bars continue to respect their independent enable and Above/Below settings.
 
 ## 2.0.98 highlights
 

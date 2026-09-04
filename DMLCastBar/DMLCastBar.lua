@@ -5,7 +5,7 @@
 DMLCastBar = DMLCastBar or {}
 local CB = DMLCastBar
 
-CB.VERSION = "2.0.97"
+CB.VERSION = "2.0.99"
 CB.WIDTH_MIN = 100
 CB.WIDTH_MAX = 800
 CB.HEIGHT_MIN = 10
@@ -161,11 +161,63 @@ local function ApplyAppearance()
     ApplyAnchorState()
 end
 
+local function GetTemplateRegion(suffix)
+    if not bar or not bar.GetName then return nil end
+    return _G[bar:GetName() .. suffix]
+end
+
+local function HideTemplateArtwork()
+    local suffixes = { "Border", "BorderShield", "Spark", "Flash", "Icon", "Text" }
+    for _, suffix in ipairs(suffixes) do
+        local region = GetTemplateRegion(suffix)
+        if region and region.Hide then region:Hide() end
+    end
+end
+
+local function RefreshCustomCastText()
+    if not bar or not DB then return end
+    local name, text
+    if bar.channeling and UnitChannelInfo then
+        name, _, text = UnitChannelInfo("player")
+    elseif bar.casting and UnitCastingInfo then
+        name, _, text = UnitCastingInfo("player")
+    end
+    if bar.nameText then
+        if DB.showSpellName and (bar.casting or bar.channeling) then
+            bar.nameText:SetText((text and text ~= "" and text) or name or "")
+            bar.nameText:Show()
+        else
+            bar.nameText:Hide()
+        end
+    end
+    if bar.timeText then
+        if DB.showCastTime and (bar.casting or bar.channeling) then
+            local value = tonumber(bar.value) or 0
+            local maximum = tonumber(bar.maxValue) or 0
+            local remaining = bar.channeling and value or math.max(0, maximum - value)
+            bar.timeText:SetText(string.format("%.1f", math.max(0, remaining)))
+            bar.timeText:Show()
+        else
+            bar.timeText:Hide()
+        end
+    end
+end
+
+local function ApplyCustomCastVisuals()
+    if not bar or not DB then return end
+    HideTemplateArtwork()
+    if bar.casting or bar.channeling then
+        bar:SetStatusBarColor(DB.color.r, DB.color.g, DB.color.b)
+    end
+    RefreshCustomCastText()
+end
+
 local function StopCast()
     if not bar then return end
-    bar.startTime = nil
-    bar.endTime = nil
-    bar.channeling = false
+    bar.casting = nil
+    bar.channeling = nil
+    bar.fadeOut = nil
+    bar.flash = nil
     bar:Hide()
 end
 
@@ -173,23 +225,22 @@ local function UpdateCast()
     if not DB or not bar then return end
     ApplyStockCastBarVisibility()
     SyncUnitFrames()
+    bar.showCastbar = DB.enabled and true or false
     if not DB.enabled then StopCast(); return end
 
-    local name, rank, displayName, icon, startMS, endMS = UnitCastingInfo and UnitCastingInfo("player")
-    local channeling = false
-    if not name and UnitChannelInfo then
-        name, rank, displayName, icon, startMS, endMS = UnitChannelInfo("player")
-        channeling = name and true or false
+    -- Use Blizzard's own 3.3.5 CastingBarFrame engine. This is the same
+    -- path used by the stock player/target/focus cast bars and avoids
+    -- duplicating its event/state semantics in DMLUI.
+    local channelName = UnitChannelInfo and UnitChannelInfo("player")
+    local castName = UnitCastingInfo and UnitCastingInfo("player")
+    if channelName and CastingBarFrame_OnEvent then
+        CastingBarFrame_OnEvent(bar, "UNIT_SPELLCAST_CHANNEL_START", "player")
+    elseif castName and CastingBarFrame_OnEvent then
+        CastingBarFrame_OnEvent(bar, "UNIT_SPELLCAST_START", "player")
+    else
+        StopCast()
     end
-    if not name or not startMS or not endMS then StopCast(); return end
-
-    bar.startTime = tonumber(startMS) / 1000
-    bar.endTime = tonumber(endMS) / 1000
-    bar.channeling = channeling
-    bar:SetMinMaxValues(0, math.max(0.001, bar.endTime - bar.startTime))
-    bar:SetStatusBarColor(DB.color.r, DB.color.g, DB.color.b)
-    if bar.nameText then bar.nameText:SetText((displayName and displayName ~= "" and displayName) or name) end
-    bar:Show()
+    ApplyCustomCastVisuals()
 end
 
 local function CreateFrames()
@@ -198,8 +249,9 @@ local function CreateFrames()
     mover:SetMovable(true)
     mover:SetClampedToScreen(true)
     mover:EnableMouse(false)
+    mover:Show()
 
-    bar = CreateFrame("StatusBar", "DMLUICastBarFrame", mover)
+    bar = CreateFrame("StatusBar", "DMLUICastBarFrame", mover, "CastingBarFrameTemplate")
     bar:SetPoint("TOPLEFT", mover, "TOPLEFT", 0, -(CB.ANCHOR_HEIGHT + CB.ANCHOR_GAP))
     bar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
     bar:SetMinMaxValues(0, 1)
@@ -224,15 +276,18 @@ local function CreateFrames()
     timeText:SetJustifyH("RIGHT")
     bar.timeText = timeText
 
-    bar:SetScript("OnUpdate", function(self)
-        if not self.startTime or not self.endTime then return end
-        local now = GetTime and GetTime() or 0
-        local duration = math.max(0.001, self.endTime - self.startTime)
-        local remaining = math.max(0, self.endTime - now)
-        self:SetMinMaxValues(0, duration)
-        if self.channeling then self:SetValue(remaining) else self:SetValue(math.max(0, now - self.startTime)) end
-        if self.timeText and DB.showCastTime then self.timeText:SetText(string.format("%.1f", remaining)) end
-        if remaining <= 0 then StopCast() end
+    -- CastingBarFrameTemplate supplies the stock Wrath OnEvent/OnUpdate
+    -- engine. DMLUI only layers its appearance/text controls on top.
+    bar:HookScript("OnEvent", function(self)
+        ApplyCustomCastVisuals()
+    end)
+    bar:HookScript("OnUpdate", function(self)
+        if self.casting or self.channeling then
+            ApplyCustomCastVisuals()
+        end
+    end)
+    bar:HookScript("OnShow", function(self)
+        ApplyCustomCastVisuals()
     end)
 
     handle = CreateFrame("Frame", "DMLUICastBarHandle", mover)
@@ -263,6 +318,7 @@ local function CreateFrames()
 
     RestorePosition()
     ApplyAppearance()
+    HideTemplateArtwork()
     bar:Hide()
 end
 
@@ -457,14 +513,6 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_START")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_STOP")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_FAILED")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_INTERRUPTED")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_DELAYED")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_START")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_UPDATE")
-eventFrame:RegisterEvent("UNIT_SPELLCAST_CHANNEL_STOP")
 eventFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == "DMLCastBar" then Initialize()
@@ -474,7 +522,5 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
     if not initialized then return end
     if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_REGEN_ENABLED" then
         ApplyStockCastBarVisibility(); SyncUnitFrames(); UpdateCast()
-    elseif string.find(event, "UNIT_SPELLCAST", 1, true) == 1 and arg1 == "player" then
-        UpdateCast()
     end
 end)

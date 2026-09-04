@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.98"
+UF.VERSION = "2.0.99"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -942,6 +942,47 @@ local function UpdateDynamicStates()
     end
 end
 
+local function HideUnitCastTemplateArtwork(bar)
+    if not bar or not bar.GetName then return end
+    local base = bar:GetName()
+    local suffixes = { "Border", "BorderShield", "Spark", "Flash", "Icon", "Text" }
+    for _, suffix in ipairs(suffixes) do
+        local region = _G[base .. suffix]
+        if region and region.Hide then region:Hide() end
+    end
+end
+
+local function RefreshUnitCastOverlay(bar)
+    if not bar then return end
+    HideUnitCastTemplateArtwork(bar)
+    local unit = bar.unit
+    local name, text
+    if bar.channeling and UnitChannelInfo then
+        name, _, text = UnitChannelInfo(unit)
+    elseif bar.casting and UnitCastingInfo then
+        name, _, text = UnitCastingInfo(unit)
+    end
+    if bar.text then
+        if bar.casting or bar.channeling then
+            bar.text:SetText((text and text ~= "" and text) or name or "")
+            bar.text:Show()
+        else
+            bar.text:Hide()
+        end
+    end
+    if bar.timeText then
+        if bar.casting or bar.channeling then
+            local value = tonumber(bar.value) or 0
+            local maximum = tonumber(bar.maxValue) or 0
+            local remaining = bar.channeling and value or math.max(0, maximum - value)
+            bar.timeText:SetText(string.format("%.1f", math.max(0, remaining)))
+            bar.timeText:Show()
+        else
+            bar.timeText:Hide()
+        end
+    end
+end
+
 local function GetCastBarConfig(key)
     if key == "player" then
         if UF.externalPlayerCastBarActive then return false, DB.playerCastBarPosition end
@@ -970,31 +1011,27 @@ local function UpdateCastBar(key)
     local definition = GetDefinition(key)
     if not frame or not frame.castBar or not definition or not DB then return end
     local enabled = GetCastBarConfig(key)
-    if not enabled or not IsDefinitionEnabled(key, definition) or not UnitExists(definition.unit) then
-        frame.castBar:Hide()
+    local bar = frame.castBar
+    bar.showCastbar = (enabled and IsDefinitionEnabled(key, definition)) and true or false
+    if not bar.showCastbar or not UnitExists(definition.unit) then
+        bar:Hide()
         return
     end
 
     ApplyCastBarPosition(key)
     local unit = definition.unit
-    local name, rank, displayName, icon, startMS, endMS = UnitCastingInfo and UnitCastingInfo(unit)
-    local channeling = false
-    if not name and UnitChannelInfo then
-        name, rank, displayName, icon, startMS, endMS = UnitChannelInfo(unit)
-        channeling = name and true or false
+    local channelName = UnitChannelInfo and UnitChannelInfo(unit)
+    local castName = UnitCastingInfo and UnitCastingInfo(unit)
+    if channelName and CastingBarFrame_OnEvent then
+        CastingBarFrame_OnEvent(bar, "UNIT_SPELLCAST_CHANNEL_START", unit)
+    elseif castName and CastingBarFrame_OnEvent then
+        CastingBarFrame_OnEvent(bar, "UNIT_SPELLCAST_START", unit)
+    else
+        bar.casting = nil
+        bar.channeling = nil
+        bar:Hide()
     end
-    if not name or not startMS or not endMS then
-        frame.castBar:Hide()
-        return
-    end
-
-    local bar = frame.castBar
-    bar.startTime = tonumber(startMS) / 1000
-    bar.endTime = tonumber(endMS) / 1000
-    bar.channeling = channeling
-    if channeling then bar:SetStatusBarColor(0.20, 0.60, 1.0) else bar:SetStatusBarColor(1.0, 0.70, 0.10) end
-    if bar.text then bar.text:SetText((displayName and displayName ~= "" and displayName) or name) end
-    bar:Show()
+    RefreshUnitCastOverlay(bar)
 end
 
 local function UpdateAllCastBars()
@@ -1442,7 +1479,8 @@ local function CreateUnitFrame(key)
 
     local castBar
     if key == "player" or key == "target" or key == "targettarget" then
-        castBar = CreateFrame("StatusBar", "DMLUIUnitCastBar_" .. key, frame)
+        castBar = CreateFrame("StatusBar", "DMLUIUnitCastBar_" .. key, frame, "CastingBarFrameTemplate")
+        if CastingBarFrame_OnLoad then CastingBarFrame_OnLoad(castBar, definition.unit, false, false) end
         castBar:SetWidth(metrics.width)
         castBar:SetHeight(UF.CAST_BAR_HEIGHT)
         castBar:SetStatusBarTexture("Interface\\TargetingFrame\\UI-StatusBar")
@@ -1470,16 +1508,18 @@ local function CreateUnitFrame(key)
         castBar.unit = definition.unit
         castBar.ownerKey = key
         castBar:Hide()
-        castBar:SetScript("OnUpdate", function(self)
-            if not self.startTime or not self.endTime then return end
-            local now = GetTime and GetTime() or 0
-            local duration = math.max(0.001, self.endTime - self.startTime)
-            local remaining = math.max(0, self.endTime - now)
-            self:SetMinMaxValues(0, duration)
-            if self.channeling then self:SetValue(remaining) else self:SetValue(math.max(0, now - self.startTime)) end
-            if self.timeText then self.timeText:SetText(string.format("%.1f", remaining)) end
-            if remaining <= 0 then self:Hide() end
+        -- Let Blizzard's 3.3.5 CastingBarFrameTemplate drive cast/channel
+        -- state and timing; keep only DMLUI's compact overlay/placement here.
+        castBar:HookScript("OnEvent", function(self)
+            RefreshUnitCastOverlay(self)
         end)
+        castBar:HookScript("OnUpdate", function(self)
+            if self.casting or self.channeling then RefreshUnitCastOverlay(self) end
+        end)
+        castBar:HookScript("OnShow", function(self)
+            RefreshUnitCastOverlay(self)
+        end)
+        HideUnitCastTemplateArtwork(castBar)
     end
 
     local handle = CreateFrame("Frame", "DMLUIUnitFrameHandle_" .. key, mover)

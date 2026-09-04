@@ -1,6 +1,9 @@
-DMLUI - Unit Frames 2.0.98
+DMLUI - Unit Frames 2.0.99
 
 Optional DMLUI unit-frame replacement module for WoW 3.3.5a.
+
+2.0.99 additions/fixes:
+- Rebuilt attached Player/Target/Target-of-Target cast bars on Blizzard's stock 3.3.5 CastingBarFrame engine so cast/channel graphics reliably appear.
 
 2.0.98 additions/fixes:
 - Fixed stock 3.3.5a spellbook range scanning. The client uses the original

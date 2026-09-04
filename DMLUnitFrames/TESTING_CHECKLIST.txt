@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.98 - test checklist
+DMLUI Unit Frames 2.0.99 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -24,3 +24,8 @@ REGRESSION
 [ ] Party grouped/freeform positioning still works.
 [ ] Attached cast bars still work.
 [ ] DMLCastBar interop still suppresses only the attached player cast bar when active.
+
+[ ] Player attached cast bar visibly fills during a normal cast.
+[ ] Target attached cast bar visibly fills while target casts.
+[ ] Target-of-target attached cast bar visibly fills when that unit casts.
+[ ] DMLCastBar custom player bar visibly fills and suppresses duplicate player cast bars when enabled.

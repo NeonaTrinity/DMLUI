@@ -1,4 +1,4 @@
-DMLUI - Cast Bar 2.0.97
+DMLUI - Cast Bar 2.0.99
 
 Optional standalone player cast-bar module for WoW 3.3.5a.
 
@@ -13,3 +13,6 @@ Features:
 - Automatically suppresses DMLUnitFrames' attached Player cast bar while enabled.
 
 Slash command: /dmlcast
+
+2.0.99 fix:
+- Rebuilt cast detection/display on Blizzard 3.3.5 CastingBarFrameTemplate/engine while retaining DML sizing, color, border, text/time, and anchor controls.
