@@ -1,4 +1,4 @@
-DML Quest Tracker 2.0.108 - in-game checklist
+DML Quest Tracker 2.0.109 - in-game checklist
 
 [ ] Quest Tracker launcher entry opens DMLQuestTracker settings.
 [ ] With DMLQuestTracker folder removed, Quest Tracker launcher entry is grayed out.
@@ -15,6 +15,8 @@ DML Quest Tracker 2.0.108 - in-game checklist
 [ ] Use quest completion color overrides header color only for completed quests.
 [ ] Completion-color picker changes completed quest header color.
 [ ] Use quest tracker background OFF makes the tracker body transparent.
+[ ] Hide quest header background ON hides only the DML Quest Tracker header background.
+[ ] Header background remains independently controllable when tracker body background is on or off.
 [ ] Background picker changes tracker background when enabled.
 [ ] Scale slider clamps to 0.50x-2.00x and scales tracker + anchor together.
 [ ] Show anchors and Lock tracker work normally after scaling.

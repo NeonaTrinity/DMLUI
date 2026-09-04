@@ -5,7 +5,7 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.108"
+QT.VERSION = "2.0.109"
 QT.WIDTH = 310
 QT.HEADER_HEIGHT = 24
 QT.QUEST_MIN_HEIGHT = 18
@@ -21,7 +21,7 @@ QT.SCALE_MAX = 2.00
 QT.SCALE_STEP = 0.05
 
 local defaults = {
-    version = 2,
+    version = 3,
     enabled = false,
     showAnchors = true,
     locked = false,
@@ -30,6 +30,7 @@ local defaults = {
     questHeaderColor = { r = 1.00, g = 0.82, b = 0.00 },
     questObjectiveColor = { r = 0.82, g = 0.82, b = 0.82 },
     useTrackerBackground = true,
+    hideQuestHeaderBackground = false,
     trackerBackgroundColor = { r = 0.025, g = 0.025, b = 0.025 },
     trackerScale = 1.00,
     useQuestCompletionColor = true,
@@ -119,6 +120,7 @@ local function CopyDefaults(reset)
     DB.collapsed = DB.collapsed and true or false
     DB.useQuestLevelRangeColors = DB.useQuestLevelRangeColors ~= false
     DB.useTrackerBackground = DB.useTrackerBackground ~= false
+    DB.hideQuestHeaderBackground = DB.hideQuestHeaderBackground and true or false
     DB.useQuestCompletionColor = DB.useQuestCompletionColor ~= false
     DB.questHeaderColor = NormalizeColor(DB.questHeaderColor, defaults.questHeaderColor)
     DB.questObjectiveColor = NormalizeColor(DB.questObjectiveColor, defaults.questObjectiveColor)
@@ -323,6 +325,14 @@ local function ApplyAppearance()
         else
             tracker:SetBackdropColor(bg.r, bg.g, bg.b, 0)
             tracker:SetBackdropBorderColor(0.28, 0.28, 0.28, 0)
+        end
+    end
+
+    if headerBackground then
+        if DB.hideQuestHeaderBackground then
+            headerBackground:Hide()
+        else
+            headerBackground:Show()
         end
     end
 end
@@ -634,6 +644,7 @@ local function RefreshConfig()
     controls.locked:SetChecked(DB.locked and 1 or nil)
     controls.useQuestLevelRangeColors:SetChecked(DB.useQuestLevelRangeColors and 1 or nil)
     controls.useTrackerBackground:SetChecked(DB.useTrackerBackground and 1 or nil)
+    controls.hideQuestHeaderBackground:SetChecked(DB.hideQuestHeaderBackground and 1 or nil)
     controls.useQuestCompletionColor:SetChecked(DB.useQuestCompletionColor and 1 or nil)
     controls.scaleSlider:SetValue(DB.trackerScale)
     controls.scaleValue:SetText(string.format("%.2fx", DB.trackerScale))
@@ -649,6 +660,7 @@ local function ApplyConfig()
     DB.locked = controls.locked:GetChecked() and true or false
     DB.useQuestLevelRangeColors = controls.useQuestLevelRangeColors:GetChecked() and true or false
     DB.useTrackerBackground = controls.useTrackerBackground:GetChecked() and true or false
+    DB.hideQuestHeaderBackground = controls.hideQuestHeaderBackground:GetChecked() and true or false
     DB.useQuestCompletionColor = controls.useQuestCompletionColor:GetChecked() and true or false
     DB.trackerScale = SnapScale(controls.scaleSlider:GetValue())
     ApplyAppearance()
@@ -769,16 +781,17 @@ local function CreateConfigFrame()
 
     local backgroundCheck = CreateCheck(configFrame, "useTrackerBackground", "Use quest tracker background", 330, -190)
     backgroundCheck:SetScript("OnClick", RefreshConditionalControls)
-    CreateColorSwatch(configFrame, "trackerBackgroundColor", "Tracker background color", 360, -231)
+    CreateCheck(configFrame, "hideQuestHeaderBackground", "Hide quest header background", 330, -223)
+    CreateColorSwatch(configFrame, "trackerBackgroundColor", "Tracker background color", 360, -264)
 
     local scaleLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    scaleLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 360, -275)
+    scaleLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 360, -308)
     scaleLabel:SetText("Quest tracker scale")
 
     local scaleSlider = CreateFrame("Slider", "DMLUIQuestTrackerScaleSlider", configFrame, "OptionsSliderTemplate")
     scaleSlider:SetWidth(205)
     scaleSlider:SetHeight(16)
-    scaleSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 357, -305)
+    scaleSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 357, -338)
     scaleSlider:SetMinMaxValues(QT.SCALE_MIN, QT.SCALE_MAX)
     if scaleSlider.SetValueStep then scaleSlider:SetValueStep(QT.SCALE_STEP) end
     _G[scaleSlider:GetName() .. "Low"]:SetText(string.format("%.2f", QT.SCALE_MIN))

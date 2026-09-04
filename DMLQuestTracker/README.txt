@@ -1,4 +1,4 @@
-DMLUI - Quest Tracker 2.0.108
+DMLUI - Quest Tracker 2.0.109
 World of Warcraft 3.3.5a / Interface 30300
 
 Optional DMLUI quest tracker module.
@@ -14,6 +14,7 @@ Features:
 - Custom quest-header, objective, background, and completed-quest colors.
 - Optional quest completion color override.
 - Optional tracker background.
+- Independent Hide quest header background setting for the DML Quest Tracker header.
 - Tracker scale from 0.50x to 2.00x.
 - Movable DML anchor with Show anchors / Lock tracker.
 - Disables Blizzard WatchFrame only while Use DML Quest Tracker is enabled.
