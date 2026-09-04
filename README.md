@@ -1,4 +1,4 @@
-# DMLUI 2.0.102
+# DMLUI 2.0.103
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -7,10 +7,17 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUI_Core/` - shared minimap launcher and module framework (2.0.100).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.102).
+- `DMLUnitFrames/` - Unit Frames module (2.0.103).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.101).
 
 
+## 2.0.103 highlights
+
+### Unit Frames
+- Fixed 3D portrait framing to use the PlayerModel portrait camera with a slight pullback for a head-and-shoulders crop instead of the full-body model.
+- Removed the model-position reset from the 3D portrait refresh path.
+- Cached 3D model bindings by unit GUID so ordinary health/resource/name updates no longer call `SetUnit()` repeatedly.
+- Added `UNIT_MODEL_CHANGED` refresh handling for shapeshifts and transformations.
 
 
 ## 2.0.102 highlights

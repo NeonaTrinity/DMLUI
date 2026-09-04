@@ -1,6 +1,12 @@
-DMLUI Unit Frames 2.0.102
+DMLUI Unit Frames 2.0.103
 
-New in 2.0.102:
+New in 2.0.103:
+- Fixed 3D portraits so PlayerModel uses the face/portrait camera with a slight camera-distance pullback for a head-and-shoulders crop instead of the full-body model.
+- Removed the 3D portrait SetPosition reset that could disturb the portrait camera.
+- 3D models are now rebound only when the unit GUID/model changes instead of on every health/resource/name refresh.
+- Added UNIT_MODEL_CHANGED handling so shapeshifts, transformations, and other same-GUID model changes refresh correctly.
+
+2.0.102 additions:
 - Portrait type dropdown: 2D Portrait, 3D Portrait, Class Icon.
 - Class Icon applies to the player/friendly player units; enemies (including enemy players) and non-player units fall back to 2D portraits.
 

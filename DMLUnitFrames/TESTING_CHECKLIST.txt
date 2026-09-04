@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.100 - test checklist
+DMLUI Unit Frames 2.0.103 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -46,3 +46,14 @@ REGRESSION
 - With Class Icon selected, enemies (including enemy players), NPCs, and pets fall back to their normal 2D portrait.
 - Rare/elite dragon ornament and combat icon remain above both 2D and 3D portraits.
 - Turning Show portrait off hides both texture and 3D model; turning it back on restores the selected mode.
+
+
+2.0.103 3D portrait camera/regression checks
+- 3D Player portrait is cropped to roughly shoulders/top of head rather than showing the full body.
+- 3D hostile target portrait uses the same close portrait framing.
+- 3D pet, focus, ToT, party, and party-pet portraits remain correctly framed.
+- Health/resource/name updates do not visibly reset or zoom the 3D model.
+- Changing target rebinds the 3D model immediately.
+- Shapeshifting/transforming refreshes the 3D portrait through UNIT_MODEL_CHANGED.
+- Switching 2D -> 3D after a model change displays the current model.
+- Rare/elite ornament and combat icon remain above the 3D portrait.

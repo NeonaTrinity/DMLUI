@@ -7,7 +7,8 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.102"
+UF.VERSION = "2.0.103"
+UF.PORTRAIT_CAMERA_DISTANCE = 1.20
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -1128,20 +1129,48 @@ local function ShowClassPortrait(frame, unit)
     frame.portrait:Show()
 end
 
-local function Show3DPortrait(frame, unit)
+local function Apply3DPortraitCamera(model)
+    if not model then return end
+
+    -- SetPortraitZoom(1) selects the unit portrait/face camera. Back that
+    -- camera out slightly so DML shows the head and shoulders instead of an
+    -- extreme face crop, without falling back to the full-body model camera.
+    if model.SetPortraitZoom then model:SetPortraitZoom(1) end
+    if model.SetCamDistanceScale then model:SetCamDistanceScale(UF.PORTRAIT_CAMERA_DISTANCE) end
+end
+
+local function Show3DPortrait(frame, unit, forceRefresh)
     local model = frame.portraitModel
     if not model or not model.SetUnit then
         Show2DPortrait(frame, unit)
         return
     end
+
     frame.portrait:Hide()
     model:Show()
-    model:SetUnit(unit)
-    if model.SetPortraitZoom then model:SetPortraitZoom(1) end
-    if model.SetPosition then model:SetPosition(0, 0, 0) end
+
+    local guid = UnitGUID and UnitGUID(unit) or nil
+    local needsRebind = forceRefresh or not model.dmlPortraitBound or model.dmlPortraitGUID ~= guid
+
+    if needsRebind then
+        -- SetUnit is relatively expensive and can reset PlayerModel camera
+        -- state on the 3.3.5 client. Rebind only when the displayed unit/model
+        -- actually changed, then restore DML's portrait camera below.
+        if model.ClearModel then model:ClearModel() end
+        model:SetUnit(unit)
+        model.dmlPortraitBound = true
+        model.dmlPortraitGUID = guid
+    end
+
+    Apply3DPortraitCamera(model)
 end
 
-local function UpdatePortraitDisplay(frame, unit)
+local function UpdatePortraitDisplay(frame, unit, force3DRefresh)
+    if force3DRefresh and frame.portraitModel then
+        -- UNIT_MODEL_CHANGED can keep the same GUID (shapeshifts/transforms),
+        -- so explicitly invalidate the cached model binding for that event.
+        frame.portraitModel.dmlPortraitBound = false
+    end
     if not DB.showPortrait then
         frame.portrait:Hide()
         if frame.portraitModel then frame.portraitModel:Hide() end
@@ -1152,7 +1181,7 @@ local function UpdatePortraitDisplay(frame, unit)
 
     frame.portraitBorder:Show()
     if DB.portraitType == "3D" then
-        Show3DPortrait(frame, unit)
+        Show3DPortrait(frame, unit, force3DRefresh)
     elseif DB.portraitType == "CLASS" then
         ShowClassPortrait(frame, unit)
     else
@@ -1170,7 +1199,7 @@ local function UpdatePortraitDisplay(frame, unit)
     end
 end
 
-local function UpdateFrame(key)
+local function UpdateFrame(key, forcePortraitRefresh)
     local frame = UF.frames[key]
     local definition = GetDefinition(key)
     if not frame or not definition or not DB then return end
@@ -1220,7 +1249,7 @@ local function UpdateFrame(key)
 
     UpdateClassCreatureText(frame, unit)
 
-    UpdatePortraitDisplay(frame, unit)
+    UpdatePortraitDisplay(frame, unit, forcePortraitRefresh)
 
     local health = tonumber(UnitHealth(unit)) or 0
     local healthMax = tonumber(UnitHealthMax(unit)) or 0
@@ -2719,6 +2748,7 @@ eventFrame:RegisterEvent("UNIT_DISPLAYPOWER")
 eventFrame:RegisterEvent("UNIT_LEVEL")
 eventFrame:RegisterEvent("UNIT_NAME_UPDATE")
 eventFrame:RegisterEvent("UNIT_PORTRAIT_UPDATE")
+eventFrame:RegisterEvent("UNIT_MODEL_CHANGED")
 eventFrame:RegisterEvent("PLAYER_FLAGS_CHANGED")
 eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
 eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -2764,6 +2794,31 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
         UpdateCastBar("targettarget")
     elseif event == "PLAYER_FOCUS_CHANGED" then
         UpdateFrame("focus")
+    elseif event == "UNIT_PORTRAIT_UPDATE" or event == "UNIT_MODEL_CHANGED" then
+        -- Portrait/model events need a real PlayerModel rebind even when the
+        -- unit GUID itself did not change (for example shapeshifts). Ordinary
+        -- health/resource/name updates continue to use the cached model.
+        if arg1 == "player" then
+            UpdateFrame("player", true)
+        elseif arg1 == "target" then
+            UpdateFrame("target", true)
+        elseif arg1 == "focus" then
+            UpdateFrame("focus", true)
+        elseif arg1 == "pet" then
+            UpdateFrame("pet", true)
+        elseif arg1 == "targettarget" then
+            UpdateFrame("targettarget", true)
+        elseif arg1 then
+            for j = 1, 4 do
+                if arg1 == "party" .. j then
+                    UpdateFrame("party" .. j, true)
+                    break
+                elseif arg1 == "partypet" .. j then
+                    UpdateFrame("partypet" .. j, true)
+                    break
+                end
+            end
+        end
     elseif event == "PARTY_MEMBERS_CHANGED" or event == "PARTY_MEMBER_ENABLE" or event == "PARTY_MEMBER_DISABLE" then
         for j = 1, 4 do
             UpdateFrame("party" .. j)
