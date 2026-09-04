@@ -1,4 +1,4 @@
-DMLUI Core 2.0.93
+DMLUI Core 2.0.94
 =============
 
 DMLUI is the shared launcher/framework for modular WoW 3.3.5a UI addons.

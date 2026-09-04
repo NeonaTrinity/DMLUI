@@ -1,11 +1,13 @@
-DMLUI Unit Frames 2.0.93 - test checklist
+DMLUI Unit Frames 2.0.94 - test checklist
 
 BASE REGRESSION
 - Open DMLUI > Unit Frames.
 - Player/Target/Focus/Pet/Target of Target still enable independently.
 - Left click targets.
 - Right click opens the Blizzard-style unit popup menu.
-- Frame scale selector and numeric entry clamp from 0.02 to 30.00 and scale the complete selected unit frame.
+- Frame scale selector and numeric entry clamp from 0.50 to 2.00 and scale the complete selected unit frame.
+- All is the first selector entry and applies one uniform scale to all scalable DML unit-frame categories.
+- When individual categories use different scales, selecting All shows Mixed until a new scale is chosen.
 
 PARTY ENABLE / STOCK REPLACEMENT
 - Join a party with 1-4 other players.
@@ -37,7 +39,7 @@ FREEFORM MODE
 - Switch back to freeform; previous individual positions should return.
 
 PARTY FRAME SCALE
-- Selector contains Party Members, Party Pets, and Party Group, but no Party 1-4 / individual pet entries.
+- Selector contains All, Party Members, Party Pets, and Party Group, but no Party 1-4 / individual pet entries.
 - Select Party Members and change scale; all complete party member frames change together in grouped and freeform modes.
 - Select Party Pets and change scale; all complete party pet frames change together in grouped and freeform modes.
 - In grouped mode, enlarge Party Members/Party Pets and verify the row spacing accounts for scaled frame dimensions without overlap.

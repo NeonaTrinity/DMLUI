@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.93"
+UF.VERSION = "2.0.94"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -20,8 +20,8 @@ UF.PARTY_HANDLE_SIZE = 18
 UF.PARTY_GROUP_WIDTH = 220
 UF.PARTY_GROUP_ANCHOR_HEIGHT = 20
 UF.PARTY_GROUP_GAP = 4
-UF.FRAME_SCALE_MIN = 0.02
-UF.FRAME_SCALE_MAX = 30.0
+UF.FRAME_SCALE_MIN = 0.50
+UF.FRAME_SCALE_MAX = 2.00
 UF.FRAME_SCALE_SLIDER_MAX = 100
 UF.PARTY_SPACING_MIN = 0
 UF.PARTY_SPACING_MAX = 150
@@ -74,10 +74,11 @@ UF.order = {
     "party3", "partypet3", "party4", "partypet4"
 }
 UF.adjustmentOrder = {
-    "player", "target", "targettarget", "focus", "pet",
+    "all", "player", "target", "targettarget", "focus", "pet",
     "party", "partypet", "partygroup"
 }
 UF.adjustmentLabels = {
+    all = "All",
     player = "Player",
     target = "Target",
     targettarget = "Target of Target",
@@ -990,12 +991,24 @@ local function SetWidgetEnabled(widget, enabled)
 end
 
 local function GetAdjustmentScaleKey(selection)
+    if selection == "all" then return "all" end
     if selection == "partygroup" then return nil end
     if selection == "party" or selection == "partypet" then return selection end
     local definition = GetDefinition(selection)
     if definition and definition.partyMember then return "party" end
     if definition and definition.partyPet then return "partypet" end
     return selection
+end
+
+local function GetAllFrameScale()
+    local keys = { "player", "target", "targettarget", "focus", "pet", "party", "partypet" }
+    local first = GetFrameScale(keys[1])
+    for i = 2, #keys do
+        if math.abs(GetFrameScale(keys[i]) - first) > 0.0001 then
+            return nil
+        end
+    end
+    return first
 end
 
 local function RefreshAdjustmentControls()
@@ -1012,11 +1025,19 @@ local function RefreshAdjustmentControls()
     if UIDropDownMenu_SetText then UIDropDownMenu_SetText(dropdown, label) end
 
     if scaleKey then
-        local scale = GetFrameScale(scaleKey)
+        local scale
+        if scaleKey == "all" then scale = GetAllFrameScale() else scale = GetFrameScale(scaleKey) end
         if slider.Enable then slider:Enable() end
         if edit.Enable then edit:Enable() end
-        slider:SetValue(ScaleToSliderValue(scale))
-        edit:SetText(FormatFrameScale(scale))
+        if scale then
+            slider:SetValue(ScaleToSliderValue(scale))
+            edit:SetText(FormatFrameScale(scale))
+        else
+            -- Mixed individual sizes: keep the control neutral until the player
+            -- chooses a new value, then that value is applied to every frame.
+            slider:SetValue(ScaleToSliderValue(1))
+            edit:SetText("Mixed")
+        end
     else
         if slider.Disable then slider:Disable() end
         if edit.Disable then edit:Disable() end
@@ -1034,9 +1055,21 @@ local function SetSelectedFrameScale(value)
     local scaleKey = GetAdjustmentScaleKey(adjustmentSelection)
     if not scaleKey then return end
     local scale = ClampFrameScale(value)
-    DB.frameScales[scaleKey] = scale
-    ApplyFrameScale(scaleKey)
-    if scaleKey == "party" or scaleKey == "partypet" then ApplyPartyLayout() end
+    if scaleKey == "all" then
+        DB.frameScales.player = scale
+        DB.frameScales.target = scale
+        DB.frameScales.targettarget = scale
+        DB.frameScales.focus = scale
+        DB.frameScales.pet = scale
+        DB.frameScales.party = scale
+        DB.frameScales.partypet = scale
+        ApplyAllFrameScales()
+        ApplyPartyLayout()
+    else
+        DB.frameScales[scaleKey] = scale
+        ApplyFrameScale(scaleKey)
+        if scaleKey == "party" or scaleKey == "partypet" then ApplyPartyLayout() end
+    end
     RefreshAdjustmentControls()
 end
 
@@ -1134,7 +1167,17 @@ local function ResetSelectedFrame()
     end
     local key = adjustmentSelection
     local scaleKey = GetAdjustmentScaleKey(key)
-    if scaleKey then DB.frameScales[scaleKey] = 1 end
+    if scaleKey == "all" then
+        DB.frameScales.player = 1
+        DB.frameScales.target = 1
+        DB.frameScales.targettarget = 1
+        DB.frameScales.focus = 1
+        DB.frameScales.pet = 1
+        DB.frameScales.party = 1
+        DB.frameScales.partypet = 1
+    elseif scaleKey then
+        DB.frameScales[scaleKey] = 1
+    end
 
     if key == "partygroup" then
         DB.partyGroupPosition = nil
@@ -1152,7 +1195,7 @@ local function ResetSelectedFrame()
         RestorePosition(key)
     end
 
-    if scaleKey then ApplyFrameScale(scaleKey) end
+    if scaleKey == "all" then ApplyAllFrameScales() elseif scaleKey then ApplyFrameScale(scaleKey) end
     ApplyPartyLayout()
     ApplyAnchorState()
     RefreshConfig()
@@ -1352,8 +1395,8 @@ local function CreateConfigFrame()
     slider:SetHeight(16)
     slider:SetMinMaxValues(0, UF.FRAME_SCALE_SLIDER_MAX)
     slider:SetValueStep(1)
-    _G[slider:GetName() .. "Low"]:SetText(tostring(UF.FRAME_SCALE_MIN))
-    _G[slider:GetName() .. "High"]:SetText(tostring(UF.FRAME_SCALE_MAX))
+    _G[slider:GetName() .. "Low"]:SetText("0.50")
+    _G[slider:GetName() .. "High"]:SetText("2.00")
     _G[slider:GetName() .. "Text"]:SetText("Unit frame size")
     slider:SetScript("OnValueChanged", function(_, value)
         if adjustmentRefreshing then return end
@@ -1389,7 +1432,7 @@ local function CreateConfigFrame()
     adjustmentNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -510)
     adjustmentNote:SetWidth(470)
     adjustmentNote:SetJustifyH("LEFT")
-    adjustmentNote:SetText("The scale changes the complete selected unit frame. Party Members share one frame scale and Party Pets share another in both grouped and freeform layouts. Party Group is position/spacing only.")
+    adjustmentNote:SetText("Frame scale is clamped to 0.50x-2.00x. All applies one size to every DML unit frame. Party Members share one scale and Party Pets share another in both grouped and freeform layouts. Party Group is position/spacing only.")
 
     local note = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     note:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -558)

@@ -1,4 +1,4 @@
-# DMLUI 2.0.93
+# DMLUI 2.0.94
 
 DMLUI is a modular World of Warcraft 3.3.5a interface project. Install only the modules you want.
 
@@ -6,13 +6,14 @@ Included folders:
 - `DMLUI_Core/` - shared launcher/module framework.
 - `DMLCooldownBar/` - Action Bars module (2.0.91; unchanged in this release).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells/ALE integration (2.0.91; unchanged in this release).
-- `DMLUnitFrames/` - Unit Frames module (2.0.93).
+- `DMLUnitFrames/` - Unit Frames module (2.0.94).
 
-## 2.0.93 highlights
+## 2.0.94 highlights
 
-Unit Frames scaling now resizes the complete selected unit frame instead of only its portrait. This includes the portrait, bars, text, backdrop, border, and secure clickable area.
+Unit Frames scale controls are now clamped to a practical **0.50x-2.00x** range. The slider and manually typed numeric value use the exact same clamp, and older saved extreme values are clamped automatically on load.
 
-The frame selector is simplified to:
+The frame selector now begins with **All**:
+- All
 - Player
 - Target
 - Target of Target
@@ -22,8 +23,8 @@ The frame selector is simplified to:
 - Party Pets
 - Party Group
 
-Party Members share one complete-frame scale and Party Pets share another, in both grouped and freeform positioning modes. Individual Party 1-4 / pet entries are no longer shown in the selector; their freeform drag handles still work exactly as before.
+Choosing All applies one uniform complete-frame scale to Player, Target, Target of Target, Focus, Pet, Party Members, and Party Pets. If the individual categories currently use different sizes, the value box shows `Mixed` until a new All value is chosen. Party Group remains position/spacing only.
 
-Grouped party layout calculations now account for the scaled member/pet dimensions so enlarged frames do not overlap adjacent rows. Existing 2.0.91/2.0.92 saved slider values migrate from the old portrait-scale storage into the new frame-scale storage.
+Party Members and Party Pets still share their respective scales in both grouped and freeform positioning modes. Individual Party 1-4 / pet positions remain controlled by their freeform drag handles rather than cluttering the scale selector.
 
 Action Bars and J3Spells behavior are unchanged from 2.0.91.

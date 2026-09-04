@@ -1,4 +1,4 @@
-DMLUI - Unit Frames 2.0.93
+DMLUI - Unit Frames 2.0.94
 
 Optional DMLUI module for WoW 3.3.5a.
 Install alongside DMLUI_Core. The Unit Frames button in the DMLUI launcher becomes active automatically.
@@ -33,6 +33,7 @@ Freeform party mode:
 - Freeform positions are saved separately from the grouped layout.
 
 Frame / size adjustment selector:
+- All
 - Player
 - Target
 - Target of Target
@@ -43,8 +44,10 @@ Frame / size adjustment selector:
 - Party Group
 
 Unit-frame scaling:
-- 0.02x through 30.00x with logarithmic slider movement.
-- Numeric entry is clamped to the same range.
+- 0.50x through 2.00x.
+- Numeric entry is clamped to the exact same 0.50x-2.00x range.
+- All applies one uniform scale to Player, Target, Target of Target, Focus, Pet, Party Members, and Party Pets.
+- If those categories currently use different sizes, All displays Mixed until a new value is chosen.
 - Scaling resizes the complete selected unit frame: portrait, bars, text, background/border, and clickable area.
 - Party Members share one complete-frame scale; Party Pets share another in both grouped and freeform modes.
 - Individual Party 1-4 and party-pet positions remain adjustable with their freeform drag handles, but they are not separate scale-selector entries.
