@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.99"
+UF.VERSION = "2.0.100"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -115,7 +115,7 @@ UF.partyGroupHandle = nil
 UF.externalPlayerCastBarActive = false
 
 local defaults = {
-    version = 7,
+    version = 8,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -132,6 +132,7 @@ local defaults = {
     showResourceText = true,
     showLevel = true,
     showClass = true,
+    showCreatureType = true,
     showAnchors = true,
     locked = false,
     highlightAggro = false,
@@ -150,8 +151,10 @@ local defaults = {
     showTargetTargetCastBar = false,
     targetTargetCastBarPosition = "BELOW",
     useClassColorNames = false,
+    useClassColorClassText = false,
     useDragonPortraits = true,
     colors = {
+        name = { r = 1.00, g = 0.82, b = 0.00 },
         background = { r = 0.035, g = 0.035, b = 0.035 },
         health = { r = 0.10, g = 0.75, b = 0.15 },
         mana = { r = 0.00, g = 0.45, b = 1.00 },
@@ -238,6 +241,7 @@ local function CopyDefaults(reset)
 
     local previousVersion = tonumber(DB.version) or 0
     local hadShowTargetTarget = DB.showTargetTarget ~= nil
+    local hadShowCreatureType = DB.showCreatureType ~= nil
     local key, value
     for key, value in pairs(defaults) do
         if reset or DB[key] == nil then
@@ -275,6 +279,13 @@ local function CopyDefaults(reset)
     DB.showResourceText = DB.showResourceText ~= false
     DB.showLevel = DB.showLevel ~= false
     DB.showClass = DB.showClass ~= false
+    -- Before 2.0.100 class and creature type shared one checkbox. Preserve
+    -- the old visible behavior once, then allow them to be controlled separately.
+    if previousVersion < 8 and not hadShowCreatureType then
+        DB.showCreatureType = DB.showClass
+    else
+        DB.showCreatureType = DB.showCreatureType ~= false
+    end
     DB.showAnchors = DB.showAnchors ~= false
     DB.locked = DB.locked and true or false
     DB.highlightAggro = DB.highlightAggro and true or false
@@ -293,8 +304,10 @@ local function CopyDefaults(reset)
     DB.showTargetTargetCastBar = DB.showTargetTargetCastBar and true or false
     if DB.targetTargetCastBarPosition ~= "ABOVE" then DB.targetTargetCastBarPosition = "BELOW" end
     DB.useClassColorNames = DB.useClassColorNames and true or false
+    DB.useClassColorClassText = DB.useClassColorClassText and true or false
     DB.useDragonPortraits = DB.useDragonPortraits ~= false
     if type(DB.colors) ~= "table" then DB.colors = {} end
+    DB.colors.name = NormalizeColor(DB.colors.name, defaults.colors.name)
     DB.colors.background = NormalizeColor(DB.colors.background, defaults.colors.background)
     DB.colors.health = NormalizeColor(DB.colors.health, defaults.colors.health)
     DB.colors.mana = NormalizeColor(DB.colors.mana, defaults.colors.mana)
@@ -662,18 +675,52 @@ local function GetClassificationDragonTexture(unit)
     return nil
 end
 
+local function GetUnitClassColor(unit)
+    if not UnitIsPlayer or not UnitIsPlayer(unit) or not UnitClass then return nil end
+    local _, classToken = UnitClass(unit)
+    local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+    return colors and classToken and colors[classToken] or nil
+end
+
 local function ApplyNameColor(frame, unit)
     if not frame or not frame.nameText then return end
-    if DB and DB.useClassColorNames and UnitIsPlayer and UnitIsPlayer(unit) and UnitClass then
-        local _, classToken = UnitClass(unit)
-        local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
-        local color = colors and classToken and colors[classToken]
+    if DB and DB.useClassColorNames then
+        local color = GetUnitClassColor(unit)
         if color then
             frame.nameText:SetTextColor(color.r or 1, color.g or 1, color.b or 1)
             return
         end
     end
-    frame.nameText:SetTextColor(1, 0.82, 0)
+    local color = GetDBColor("name", defaults.colors.name)
+    frame.nameText:SetTextColor(color.r or 1, color.g or 0.82, color.b or 0)
+end
+
+local function UpdateClassCreatureText(frame, unit)
+    if not frame or not frame.classText or not DB then return end
+    local isPlayer = UnitIsPlayer and UnitIsPlayer(unit)
+    if isPlayer and DB.showClass then
+        local classDisplay = UnitClass and UnitClass(unit) or ""
+        frame.classText:SetText(classDisplay or "")
+        if DB.useClassColorClassText then
+            local color = GetUnitClassColor(unit)
+            if color then
+                frame.classText:SetTextColor(color.r or 1, color.g or 1, color.b or 1)
+            else
+                frame.classText:SetTextColor(1, 1, 1)
+            end
+        else
+            frame.classText:SetTextColor(1, 1, 1)
+        end
+        frame.classText:Show()
+    elseif (not isPlayer) and DB.showCreatureType then
+        local creatureType = UnitCreatureType and UnitCreatureType(unit) or ""
+        frame.classText:SetText(creatureType or "")
+        frame.classText:SetTextColor(1, 1, 1)
+        frame.classText:Show()
+    else
+        frame.classText:SetText("")
+        frame.classText:Hide()
+    end
 end
 
 local rangeSpellLists = { friend = {}, harm = {} }
@@ -1088,14 +1135,7 @@ local function UpdateFrame(key)
         if frame.levelSkull then frame.levelSkull:Hide() end
     end
 
-    if DB.showClass and frame.classText then
-        local classDisplay = UnitClass and UnitClass(unit) or nil
-        if not classDisplay or classDisplay == "" then classDisplay = UnitCreatureType and UnitCreatureType(unit) or "" end
-        frame.classText:SetText(classDisplay or "")
-        frame.classText:Show()
-    elseif frame.classText then
-        frame.classText:Hide()
-    end
+    UpdateClassCreatureText(frame, unit)
 
     if DB.showPortrait then
         if SetPortraitTexture then SetPortraitTexture(frame.portrait, unit) end
@@ -1661,7 +1701,7 @@ end
 
 local function RefreshColorControls()
     if not DB or not DB.colors then return end
-    local keys = { "background", "health", "mana", "rage", "energy", "runic" }
+    local keys = { "name", "background", "health", "mana", "rage", "energy", "runic" }
     for i = 1, #keys do
         local key = keys[i]
         local swatch = configControls["color_" .. key]
@@ -1906,6 +1946,7 @@ local function RefreshConfig()
     configControls.showResourceText:SetChecked(DB.showResourceText and 1 or nil)
     configControls.showLevel:SetChecked(DB.showLevel and 1 or nil)
     configControls.showClass:SetChecked(DB.showClass and 1 or nil)
+    configControls.showCreatureType:SetChecked(DB.showCreatureType and 1 or nil)
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
     configControls.locked:SetChecked(DB.locked and 1 or nil)
     configControls.highlightAggro:SetChecked(DB.highlightAggro and 1 or nil)
@@ -1922,6 +1963,7 @@ local function RefreshConfig()
     configControls.showTargetCastBar:SetChecked(DB.showTargetCastBar and 1 or nil)
     configControls.showTargetTargetCastBar:SetChecked(DB.showTargetTargetCastBar and 1 or nil)
     configControls.useClassColorNames:SetChecked(DB.useClassColorNames and 1 or nil)
+    configControls.useClassColorClassText:SetChecked(DB.useClassColorClassText and 1 or nil)
     configControls.useDragonPortraits:SetChecked(DB.useDragonPortraits and 1 or nil)
     RefreshColorControls()
     RefreshPartyLayoutControls()
@@ -1950,6 +1992,7 @@ local function ApplyConfig()
     DB.showResourceText = configControls.showResourceText:GetChecked() and true or false
     DB.showLevel = configControls.showLevel:GetChecked() and true or false
     DB.showClass = configControls.showClass:GetChecked() and true or false
+    DB.showCreatureType = configControls.showCreatureType:GetChecked() and true or false
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
     DB.locked = configControls.locked:GetChecked() and true or false
     DB.highlightAggro = configControls.highlightAggro:GetChecked() and true or false
@@ -1961,6 +2004,7 @@ local function ApplyConfig()
     DB.showTargetCastBar = configControls.showTargetCastBar:GetChecked() and true or false
     DB.showTargetTargetCastBar = configControls.showTargetTargetCastBar:GetChecked() and true or false
     DB.useClassColorNames = configControls.useClassColorNames:GetChecked() and true or false
+    DB.useClassColorClassText = configControls.useClassColorClassText:GetChecked() and true or false
     DB.useDragonPortraits = configControls.useDragonPortraits:GetChecked() and true or false
     if DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange then RebuildRangeSpellCache() end
 
@@ -2217,20 +2261,22 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "showHealthText", "Show health text", 310, -108)
     CreateCheckField(configFrame, "showResourceText", "Show resource text", 310, -138)
     CreateCheckField(configFrame, "showLevel", "Show level", 310, -168)
-    CreateCheckField(configFrame, "showClass", "Show class / creature type", 310, -198)
+    CreateCheckField(configFrame, "showClass", "Show class", 310, -198)
+    CreateCheckField(configFrame, "useClassColorClassText", "Use class color for class text", 310, -228)
+    CreateCheckField(configFrame, "showCreatureType", "Show creature type", 310, -258)
 
     local section3 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    section3:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -242)
+    section3:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -302)
     section3:SetText("Positioning")
-    CreateCheckField(configFrame, "showAnchors", "Show anchors", 310, -262)
-    CreateCheckField(configFrame, "locked", "Lock frames", 310, -292)
+    CreateCheckField(configFrame, "showAnchors", "Show anchors", 310, -322)
+    CreateCheckField(configFrame, "locked", "Lock frames", 310, -352)
 
     local petPosLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    petPosLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -332)
+    petPosLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -392)
     petPosLabel:SetText("Party pet position:")
     configControls.partyPetPositionLabel = petPosLabel
     local petPosDropDown = CreateFrame("Frame", "DMLUIUnitFramesPartyPetPositionDropDown", configFrame, "UIDropDownMenuTemplate")
-    petPosDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 410, -314)
+    petPosDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 410, -374)
     UIDropDownMenu_SetWidth(petPosDropDown, 90)
     UIDropDownMenu_Initialize(petPosDropDown, function()
         local options = { { value = "RIGHT", text = "Right" }, { value = "BELOW", text = "Below" } }
@@ -2252,11 +2298,11 @@ local function CreateConfigFrame()
     configControls.partyPetPosition = petPosDropDown
 
     local spacingLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    spacingLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -375)
+    spacingLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -435)
     spacingLabel:SetText("Party spacing:")
     configControls.partySpacingLabel = spacingLabel
     local spacingSlider = CreateFrame("Slider", "DMLUIUnitFramesPartySpacingSlider", configFrame, "OptionsSliderTemplate")
-    spacingSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 318, -397)
+    spacingSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 318, -457)
     spacingSlider:SetWidth(180)
     spacingSlider:SetHeight(16)
     spacingSlider:SetMinMaxValues(UF.PARTY_SPACING_MIN, UF.PARTY_SPACING_MAX)
@@ -2272,7 +2318,7 @@ local function CreateConfigFrame()
     local spacingEdit = CreateFrame("EditBox", "DMLUIUnitFramesPartySpacingEdit", configFrame, "InputBoxTemplate")
     spacingEdit:SetWidth(55)
     spacingEdit:SetHeight(22)
-    spacingEdit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 430, -447)
+    spacingEdit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 430, -507)
     spacingEdit:SetAutoFocus(false)
     spacingEdit:SetNumeric(true)
     spacingEdit:SetMaxLetters(3)
@@ -2291,7 +2337,7 @@ local function CreateConfigFrame()
     configControls.partySpacingEdit = spacingEdit
 
     local castSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -500)
+    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -560)
     castSection:SetText("Attached cast bars")
 
     local function CreateCastBarRow(controlKey, labelText, y, dbPositionKey)
@@ -2321,9 +2367,9 @@ local function CreateConfigFrame()
         return check, dd
     end
 
-    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -525, "playerCastBarPosition")
-    CreateCastBarRow("showTargetCastBar", "Target cast bar", -555, "targetCastBarPosition")
-    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -585, "targetTargetCastBarPosition")
+    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -585, "playerCastBarPosition")
+    CreateCastBarRow("showTargetCastBar", "Target cast bar", -615, "targetCastBarPosition")
+    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -645, "targetTargetCastBarPosition")
 
     -- Column 3: colors and range fading.
     local colorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -2350,20 +2396,21 @@ local function CreateConfigFrame()
         return swatch
     end
 
-    CreateColorRow("background", "Frame background", -82)
-    CreateColorRow("health", "Health bar", -116)
-    CreateColorRow("mana", "Mana", -150)
-    CreateColorRow("rage", "Rage", -184)
-    CreateColorRow("energy", "Energy", -218)
-    CreateColorRow("runic", "Runic power", -252)
+    CreateColorRow("name", "Name", -82)
+    CreateColorRow("background", "Frame background", -116)
+    CreateColorRow("health", "Health bar", -150)
+    CreateColorRow("mana", "Mana", -184)
+    CreateColorRow("rage", "Rage", -218)
+    CreateColorRow("energy", "Energy", -252)
+    CreateColorRow("runic", "Runic power", -286)
 
     local rangeSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rangeSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 574, -305)
+    rangeSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 574, -339)
     rangeSection:SetText("Range fading")
 
-    local fadePartyCheck = CreateCheckField(configFrame, "fadePartyOutOfRange", "Fade party frames when out of range", 580, -325)
+    local fadePartyCheck = CreateCheckField(configFrame, "fadePartyOutOfRange", "Fade party frames when out of range", 580, -359)
     fadePartyCheck:SetScript("OnClick", RefreshRangeControlEnableState)
-    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 580, -485)
+    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 580, -519)
     fadeTargetCheck:SetScript("OnClick", RefreshRangeControlEnableState)
 
     local function CreateSpellRangeRow(prefix, kind, y, spellKey, fadeKey)
@@ -2443,8 +2490,8 @@ local function CreateConfigFrame()
         return dd, edit
     end
 
-    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateSpellRangeRow("Party", "friend", -357, "partyRangeSpell", "partyFadePercent")
-    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateSpellRangeRow("Target", "harm", -517, "targetRangeSpell", "targetFadePercent")
+    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateSpellRangeRow("Party", "friend", -391, "partyRangeSpell", "partyFadePercent")
+    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateSpellRangeRow("Target", "harm", -551, "targetRangeSpell", "targetFadePercent")
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
     apply:SetWidth(75)

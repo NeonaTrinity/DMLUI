@@ -1,14 +1,23 @@
-# DMLUI 2.0.99
+# DMLUI 2.0.100
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
 ## Included modules
 
-- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.97).
+- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.100).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.99).
+- `DMLUnitFrames/` - Unit Frames module (2.0.100).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.99).
+
+
+## 2.0.100 highlights
+
+### Unit Frames
+- Split `Show class` and `Show creature type` into separate options.
+- Added a configurable `Name` color swatch. Player class colors override it only when `Use class color as name` is enabled.
+- Added `Use class color for class text` independently from name coloring.
+- Existing Unit Frames and Cast Bar behavior from 2.0.99 is preserved.
 
 ## 2.0.99 highlights
 

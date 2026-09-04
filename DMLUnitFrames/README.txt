@@ -1,4 +1,10 @@
-DMLUI - Unit Frames 2.0.99
+DMLUI - Unit Frames 2.0.100
+
+2.0.100 additions:
+- Split Show class and Show creature type into independent display options.
+- Added Name color picker; it is used whenever class-color name override does not apply.
+- Added Use class color for class text as a separate option from class-colored names.
+- Existing 2.0.99 cast-bar, range, aggro, party, scaling, classification, and color features are preserved.
 
 Optional DMLUI unit-frame replacement module for WoW 3.3.5a.
 

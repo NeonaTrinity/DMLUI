@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.99 - test checklist
+DMLUI Unit Frames 2.0.100 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -29,3 +29,11 @@ REGRESSION
 [ ] Target attached cast bar visibly fills while target casts.
 [ ] Target-of-target attached cast bar visibly fills when that unit casts.
 [ ] DMLCastBar custom player bar visibly fills and suppresses duplicate player cast bars when enabled.
+
+
+2.0.100 display/color checks:
+- Show class affects player class text only.
+- Show creature type affects non-player creature type text only.
+- Name color swatch changes fallback name color.
+- Use class color as name overrides the custom name color for player units only.
+- Use class color for class text colors player class text independently of name coloring.
