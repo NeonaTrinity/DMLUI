@@ -1,0 +1,22 @@
+DML Quest Tracker 2.0.108 - in-game checklist
+
+[ ] Quest Tracker launcher entry opens DMLQuestTracker settings.
+[ ] With DMLQuestTracker folder removed, Quest Tracker launcher entry is grayed out.
+[ ] Use DML Quest Tracker hides Blizzard WatchFrame and shows DML tracker.
+[ ] Disabling DML Quest Tracker restores Blizzard WatchFrame.
+[ ] Tracking a quest in the normal quest log adds it to DML without /reload.
+[ ] Untracking a quest in the normal quest log removes it from DML without /reload.
+[ ] Right-clicking a DML quest header untracks it and removes the quest-log watched checkmark.
+[ ] Left-clicking quest +/- only collapses/expands that quest's objectives.
+[ ] Whole tracker +/- preserves individual quest collapse states.
+[ ] Use quest level range colors matches Wrath quest-log difficulty colors.
+[ ] With level range colors OFF, Quest header color controls non-completed quest headers.
+[ ] Quest objective color applies to objective rows.
+[ ] Use quest completion color overrides header color only for completed quests.
+[ ] Completion-color picker changes completed quest header color.
+[ ] Use quest tracker background OFF makes the tracker body transparent.
+[ ] Background picker changes tracker background when enabled.
+[ ] Scale slider clamps to 0.50x-2.00x and scales tracker + anchor together.
+[ ] Show anchors and Lock tracker work normally after scaling.
+[ ] Position persists across /reload.
+[ ] Quest level colors refresh after leveling up.

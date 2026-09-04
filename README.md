@@ -1,15 +1,36 @@
-# DMLUI 2.0.106
+# DMLUI 2.0.107
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
 ## Included modules
 
-- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.100).
+- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.107).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
 - `DMLUnitFrames/` - Unit Frames module (2.0.106).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.106).
+- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.107).
 
+
+
+## 2.0.107 highlights
+
+### DMLUI Core
+- Added a permanent **Quest Tracker** launcher entry.
+- The button is active when `DMLQuestTracker/` is installed and loaded, and gray/disabled when the optional module is absent.
+- Expanded the launcher vertically to fit the additional module entry cleanly.
+
+### Quest Tracker
+- New optional `DMLQuestTracker/` module.
+- **Use DML Quest Tracker** replaces Blizzard's `WatchFrame` with the DML tracker.
+- Reads Wrath's existing watched-quest list without changing which quests are tracked.
+- Uses the standard **DML Quest Tracker - drag to move** anchor with **Show anchors** and **Lock tracker**.
+- The complete tracker minimizes under its **DML Quest Tracker** header.
+- Every quest is its own `+ / -` sub-header and independently expands/collapses its objectives.
+- Rows below an expanded/collapsed quest immediately reflow to remove unused space.
+- Individual quest collapse state is saved by Wrath quest ID rather than quest-log index.
+- Objective progress refreshes from normal Wrath quest-log/watch events.
+- Disabling DML Quest Tracker restores Blizzard's WatchFrame.
 
 
 ## 2.0.106 highlights
@@ -92,3 +113,9 @@ Existing Unit Frames features remain available: player/target/focus/pet/target-o
 - `/dmlui` - DMLUI launcher.
 - `/dmluf` - Unit Frames settings.
 - `/dmlcast` - Cast Bar settings.
+- `/dmlquest` or `/dmlqt` - Quest Tracker settings.
+
+
+## 2.0.108
+
+DMLQuestTracker now mirrors the quest log watched list bidirectionally, supports right-click untracking, Wrath quest difficulty colors or custom header/objective colors, optional background color, tracker scaling, and a configurable completed-quest color.

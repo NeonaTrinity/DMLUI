@@ -1,0 +1,11 @@
+## Interface: 30300
+## Title: DMLUI - Quest Tracker
+## Notes: Optional movable DMLUI quest tracker with per-quest objective collapsing.
+## Author: Spaghetti Dog Games
+## Version: 2.0.108
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## Dependencies: DMLUI_Core
+## SavedVariablesPerCharacter: DMLQuestTrackerDB
+
+DMLQuestTracker.lua
