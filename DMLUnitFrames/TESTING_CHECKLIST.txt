@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.90 - test checklist
+DMLUI Unit Frames 2.0.91 - test checklist
 
 INSTALL / LAUNCHER
 - Install DMLUI_Core + DMLUnitFrames.
@@ -42,3 +42,18 @@ DISPLAY
 
 COMBAT
 - Attempting to Apply enable/disable changes during combat is rejected rather than modifying protected frames.
+
+
+2.0.91 RIGHT-CLICK MENU
+- Enable DML Player Frame. Right-click it and confirm the normal SELF menu opens.
+- Enable DML Target Frame. Target a player and NPC; right-click and confirm the corresponding Blizzard menu opens.
+- Test Focus, Pet, and Target of Target right-click menus.
+- Confirm left-click still targets the unit.
+
+2.0.91 PORTRAIT SCALE
+- Open Unit Frames and use the bottom Frame dropdown in this order: Player, Target, Target of Target, Focus, Pet.
+- Move the portrait slider and confirm only the selected unit portrait changes size.
+- Type 1.25, press Enter, and confirm the slider/display and selected portrait update.
+- Type values below 0.02 and above 30; confirm they clamp to 0.02 and 30.0.
+- Set different values for two unit types, close/reopen options, and confirm each value persists independently.
+- /reload and confirm portrait scales persist.

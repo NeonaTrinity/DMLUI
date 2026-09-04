@@ -8,7 +8,7 @@
 DMLUI = DMLUI or {}
 local UI = DMLUI
 
-UI.VERSION = "2.0.90"
+UI.VERSION = "2.0.91"
 UI.modules = UI.modules or {}
 UI.knownModules = UI.knownModules or {
     { key = "ActionBars", name = "Action Bars", order = 10 },

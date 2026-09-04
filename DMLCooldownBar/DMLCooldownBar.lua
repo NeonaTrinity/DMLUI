@@ -25,7 +25,7 @@ DMLCD.itemInfoRecoveryDue = DMLCD.itemInfoRecoveryDue or {}
 DMLCD.itemInfoAssigned = DMLCD.itemInfoAssigned or {}
 
 local ADDON_NAME = "DMLCooldownBar"
-local ADDON_VERSION = "2.0.90"
+local ADDON_VERSION = "2.0.91"
 local PRINT_PREFIX = "|cff66ff99DML Cooldown Bar|r: "
 local QUESTION_ICON = "Interface\\Icons\\INV_Misc_QuestionMark"
 

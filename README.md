@@ -1,4 +1,4 @@
-# DMLUI 2.0.90
+# DMLUI 2.0.91
 
 DMLUI is a modular user-interface project for World of Warcraft 3.3.5a.
 
@@ -13,7 +13,10 @@ Future modules such as `DMLBigBag/` can register with DMLUI and automatically ac
 
 Install `DMLUI_Core/` plus only the feature modules you want. The Action Bars module still has a standalone fallback if DMLUI is absent, but DMLUI is the intended umbrella configuration experience.
 
-## 2.0.90 highlights
+## 2.0.91 highlights
+
+- DML Unit Frames now use Blizzard-compatible right-click unit popup menus on Wrath 3.3.5a.
+- Unit Frames adds per-unit portrait scaling for Player, Target, Target of Target, Focus, and Pet, with a logarithmic slider plus clamped numeric input (0.02x-30x).
 
 - Stabilizes the movable shaman totem bar by isolating Blizzard's multicast frame and Y-offset manager entries only while DML controls the bar, then restoring them when disabled.
 - Assigned items at zero quantity/uses now show `0` on the DML action button while faded.

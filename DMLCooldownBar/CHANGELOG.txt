@@ -1,3 +1,8 @@
+DMLUI / DML Cooldown Bar 2.0.91
+
+- Coordinated DMLUI package version bump for Unit Frames right-click menu and portrait scaling update.
+- Action Bar behavior is unchanged from 2.0.90.
+
 DMLUI / DML Cooldown Bar 2.0.90
 
 - Fixed the movable DML totem bar occasionally drifting vertically away from its background after Blizzard UI layout refreshes.

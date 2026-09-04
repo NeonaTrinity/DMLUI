@@ -7,16 +7,22 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.90"
+UF.VERSION = "2.0.91"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
 UF.ANCHOR_GAP = 3
+UF.PORTRAIT_SCALE_MIN = 0.02
+UF.PORTRAIT_SCALE_MAX = 30.0
+UF.PORTRAIT_SCALE_SLIDER_MAX = 100
+UF.scaleOrder = { "player", "target", "targettarget", "focus", "pet" }
 
 local DB
 local configFrame
 local configControls = {}
 local initialized = false
+local portraitScaleSelection = "player"
+local portraitScaleRefreshing = false
 local PRINT_PREFIX = "|cff66ff99DMLUI Unit Frames|r: "
 
 UF.definitions = {
@@ -83,7 +89,8 @@ local defaults = {
     showClass = true,
     showAnchors = true,
     locked = false,
-    positions = {}
+    positions = {},
+    portraitScales = {}
 }
 
 local function Print(message)
@@ -129,10 +136,82 @@ local function CopyDefaults(reset)
     if type(DB.positions) ~= "table" then
         DB.positions = {}
     end
+    if type(DB.portraitScales) ~= "table" then
+        DB.portraitScales = {}
+    end
+
+    local i
+    for i = 1, #UF.order do
+        local frameKey = UF.order[i]
+        local value = tonumber(DB.portraitScales[frameKey]) or 1
+        if value < UF.PORTRAIT_SCALE_MIN then value = UF.PORTRAIT_SCALE_MIN end
+        if value > UF.PORTRAIT_SCALE_MAX then value = UF.PORTRAIT_SCALE_MAX end
+        DB.portraitScales[frameKey] = value
+    end
 end
 
 local function GetDefinition(key)
     return UF.definitions[key]
+end
+
+local function ClampPortraitScale(value)
+    value = tonumber(value) or 1
+    if value < UF.PORTRAIT_SCALE_MIN then value = UF.PORTRAIT_SCALE_MIN end
+    if value > UF.PORTRAIT_SCALE_MAX then value = UF.PORTRAIT_SCALE_MAX end
+    return value
+end
+
+local function GetPortraitScale(key)
+    if not DB or type(DB.portraitScales) ~= "table" then
+        return 1
+    end
+    return ClampPortraitScale(DB.portraitScales[key])
+end
+
+local function ApplyPortraitScale(key)
+    local frame = UF.frames[key]
+    if not frame or not frame.portrait or not frame.portraitBorder then
+        return
+    end
+
+    local scale = GetPortraitScale(key)
+    frame.portraitBorder:SetWidth(72 * scale)
+    frame.portraitBorder:SetHeight(72 * scale)
+    frame.portrait:SetWidth(66 * scale)
+    frame.portrait:SetHeight(66 * scale)
+end
+
+local function ApplyAllPortraitScales()
+    local i
+    for i = 1, #UF.order do
+        ApplyPortraitScale(UF.order[i])
+    end
+end
+
+local function ScaleToSliderValue(scale)
+    scale = ClampPortraitScale(scale)
+    local minValue = UF.PORTRAIT_SCALE_MIN
+    local maxValue = UF.PORTRAIT_SCALE_MAX
+    return UF.PORTRAIT_SCALE_SLIDER_MAX * (math.log(scale / minValue) / math.log(maxValue / minValue))
+end
+
+local function SliderValueToScale(value)
+    value = tonumber(value) or 0
+    if value < 0 then value = 0 end
+    if value > UF.PORTRAIT_SCALE_SLIDER_MAX then value = UF.PORTRAIT_SCALE_SLIDER_MAX end
+    local minValue = UF.PORTRAIT_SCALE_MIN
+    local maxValue = UF.PORTRAIT_SCALE_MAX
+    return ClampPortraitScale(minValue * math.exp(math.log(maxValue / minValue) * (value / UF.PORTRAIT_SCALE_SLIDER_MAX)))
+end
+
+local function FormatPortraitScale(scale)
+    scale = ClampPortraitScale(scale)
+    if scale < 0.1 then
+        return string.format("%.3f", scale)
+    elseif scale < 10 then
+        return string.format("%.2f", scale)
+    end
+    return string.format("%.1f", scale)
 end
 
 local function SavePosition(key)
@@ -438,8 +517,88 @@ local function ApplyFrameActivation()
     end
 
     ApplyBlizzardFrameVisibility()
+    ApplyAllPortraitScales()
     UpdateAllFrames()
     return true
+end
+
+local function PopulateUnitPopup(dropdown, key)
+    local definition = GetDefinition(key)
+    if not definition or not UnitPopup_ShowMenu then
+        return
+    end
+
+    local unit = definition.unit
+
+    -- Match Blizzard's special FocusFrame menu so Set Focus / Clear Focus
+    -- behaves exactly like the stock Wrath focus frame.
+    if key == "focus" then
+        UnitPopup_ShowMenu(dropdown, "FOCUS", unit, SET_FOCUS)
+        return
+    end
+
+    local menu
+    local name
+    local id
+
+    if UnitIsUnit and UnitIsUnit(unit, "player") then
+        menu = "SELF"
+    elseif UnitIsUnit and UnitIsUnit(unit, "vehicle") then
+        menu = "VEHICLE"
+    elseif UnitIsUnit and UnitIsUnit(unit, "pet") then
+        menu = "PET"
+    elseif UnitIsPlayer and UnitIsPlayer(unit) then
+        id = UnitInRaid and UnitInRaid(unit) or nil
+        if id then
+            menu = "RAID_PLAYER"
+            if GetRaidRosterInfo then
+                name = GetRaidRosterInfo(id + 1)
+            end
+        elseif UnitInParty and UnitInParty(unit) then
+            menu = "PARTY"
+        else
+            menu = "PLAYER"
+        end
+    else
+        menu = "TARGET"
+        name = RAID_TARGET_ICON
+    end
+
+    UnitPopup_ShowMenu(dropdown, menu, unit, name, id)
+end
+
+local function CreateUnitMenu(frame, key)
+    local definition = GetDefinition(key)
+    if not definition then
+        return
+    end
+
+    local dropdown = CreateFrame("Frame", "DMLUIUnitFrameDropDown_" .. key, UIParent, "UIDropDownMenuTemplate")
+    dropdown:Hide()
+    UIDropDownMenu_Initialize(dropdown, function(self)
+        PopulateUnitPopup(self, key)
+    end, "MENU")
+
+    local showMenu = function()
+        if UnitExists(definition.unit) then
+            ToggleDropDownMenu(1, nil, dropdown, frame:GetName(), 120, 10)
+        end
+    end
+
+    -- Wrath's SecureUnitButtonTemplate uses type2="menu" and self.menu.
+    -- SecureUnitButton_OnLoad installs exactly that behavior and preserves
+    -- secure left-click targeting at the same time.
+    if SecureUnitButton_OnLoad then
+        SecureUnitButton_OnLoad(frame, definition.unit, showMenu)
+    else
+        frame:SetAttribute("unit", definition.unit)
+        frame:SetAttribute("*type1", "target")
+        frame:SetAttribute("*type2", "menu")
+        frame.menu = showMenu
+    end
+
+    frame.unit = definition.unit
+    frame.dmlMenuDropDown = dropdown
 end
 
 local function CreateUnitFrame(key)
@@ -466,9 +625,7 @@ local function CreateUnitFrame(key)
     frame:SetFrameStrata("MEDIUM")
     frame:SetFrameLevel(20)
     frame:RegisterForClicks("AnyUp")
-    frame:SetAttribute("unit", definition.unit)
-    frame:SetAttribute("type1", "target")
-    frame:SetAttribute("type2", "togglemenu")
+    CreateUnitMenu(frame, key)
     frame:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -596,6 +753,8 @@ local function CreateUnitFrame(key)
     UF.movers[key] = mover
     UF.frames[key] = frame
     UF.handles[key] = handle
+    ApplyPortraitScale(key)
+
     RestorePosition(key)
     mover:Hide()
     frame:Hide()
@@ -623,6 +782,43 @@ local function CreateCheckField(parent, key, labelText, x, y)
     return check
 end
 
+local function RefreshPortraitScaleControls()
+    if not configFrame or not DB then
+        return
+    end
+
+    local dropdown = configControls.portraitScaleUnit
+    local slider = configControls.portraitScaleSlider
+    local edit = configControls.portraitScaleEdit
+    if not dropdown or not slider or not edit then
+        return
+    end
+
+    local definition = GetDefinition(portraitScaleSelection)
+    local scale = GetPortraitScale(portraitScaleSelection)
+
+    portraitScaleRefreshing = true
+    if UIDropDownMenu_SetSelectedValue then
+        UIDropDownMenu_SetSelectedValue(dropdown, portraitScaleSelection)
+    end
+    if UIDropDownMenu_SetText then
+        UIDropDownMenu_SetText(dropdown, definition and definition.label or "Player")
+    end
+    slider:SetValue(ScaleToSliderValue(scale))
+    edit:SetText(FormatPortraitScale(scale))
+    portraitScaleRefreshing = false
+end
+
+local function SetSelectedPortraitScale(value)
+    if not DB then
+        return
+    end
+    local scale = ClampPortraitScale(value)
+    DB.portraitScales[portraitScaleSelection] = scale
+    ApplyPortraitScale(portraitScaleSelection)
+    RefreshPortraitScaleControls()
+end
+
 local function RefreshConfig()
     if not configFrame then
         return
@@ -639,6 +835,7 @@ local function RefreshConfig()
     configControls.showClass:SetChecked(DB.showClass and 1 or nil)
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
     configControls.locked:SetChecked(DB.locked and 1 or nil)
+    RefreshPortraitScaleControls()
 end
 
 local function ApplyConfig()
@@ -685,7 +882,7 @@ local function CreateConfigFrame()
 
     configFrame = CreateFrame("Frame", "DMLUIUnitFramesConfigFrame", UIParent)
     configFrame:SetWidth(560)
-    configFrame:SetHeight(535)
+    configFrame:SetHeight(650)
     configFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 20)
     configFrame:SetFrameStrata("DIALOG")
     configFrame:SetFrameLevel(100)
@@ -738,13 +935,107 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "showAnchors", "Show anchors", 40, -272)
     CreateCheckField(configFrame, "locked", "Lock frames", 40, -302)
 
+    local section4 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    section4:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -346)
+    section4:SetText("Portrait scale")
+
+    local unitLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    unitLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -377)
+    unitLabel:SetText("Frame:")
+
+    local unitDropDown = CreateFrame("Frame", "DMLUIUnitFramesPortraitScaleUnitDropDown", configFrame, "UIDropDownMenuTemplate")
+    unitDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 84, -360)
+    UIDropDownMenu_SetWidth(unitDropDown, 170)
+    UIDropDownMenu_Initialize(unitDropDown, function()
+        local i
+        for i = 1, #UF.scaleOrder do
+            local key = UF.scaleOrder[i]
+            local definition = GetDefinition(key)
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = definition and definition.label or key
+            info.value = key
+            info.checked = (portraitScaleSelection == key)
+            info.func = function(button)
+                portraitScaleSelection = button.value or key
+                RefreshPortraitScaleControls()
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+    configControls.portraitScaleUnit = unitDropDown
+
+    local scaleLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    scaleLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -421)
+    scaleLabel:SetText("Scale:")
+
+    local slider = CreateFrame("Slider", "DMLUIUnitFramesPortraitScaleSlider", configFrame, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 100, -414)
+    slider:SetWidth(385)
+    slider:SetHeight(16)
+    slider:SetMinMaxValues(0, UF.PORTRAIT_SCALE_SLIDER_MAX)
+    slider:SetValueStep(1)
+    _G[slider:GetName() .. "Low"]:SetText(tostring(UF.PORTRAIT_SCALE_MIN))
+    _G[slider:GetName() .. "High"]:SetText(tostring(UF.PORTRAIT_SCALE_MAX))
+    _G[slider:GetName() .. "Text"]:SetText("Portrait size")
+    slider:SetScript("OnValueChanged", function(_, value)
+        if portraitScaleRefreshing then
+            return
+        end
+        SetSelectedPortraitScale(SliderValueToScale(value))
+    end)
+    configControls.portraitScaleSlider = slider
+
+    local valueLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    valueLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 174, -468)
+    valueLabel:SetText("Scale value:")
+
+    local scaleEdit = CreateFrame("EditBox", "DMLUIUnitFramesPortraitScaleEdit", configFrame, "InputBoxTemplate")
+    scaleEdit:SetWidth(92)
+    scaleEdit:SetHeight(22)
+    scaleEdit:SetPoint("LEFT", valueLabel, "RIGHT", 8, 0)
+    scaleEdit:SetAutoFocus(false)
+    scaleEdit:SetNumeric(false)
+    scaleEdit:SetMaxLetters(8)
+    local function CommitScaleEdit(self)
+        local value = tonumber(self:GetText())
+        if value then
+            SetSelectedPortraitScale(value)
+        else
+            RefreshPortraitScaleControls()
+        end
+        self:ClearFocus()
+    end
+    scaleEdit:SetScript("OnEnterPressed", CommitScaleEdit)
+    scaleEdit:SetScript("OnEditFocusLost", function(self)
+        if portraitScaleRefreshing then
+            return
+        end
+        local value = tonumber(self:GetText())
+        if value then
+            SetSelectedPortraitScale(value)
+        else
+            RefreshPortraitScaleControls()
+        end
+    end)
+    scaleEdit:SetScript("OnEscapePressed", function(self)
+        RefreshPortraitScaleControls()
+        self:ClearFocus()
+    end)
+    configControls.portraitScaleEdit = scaleEdit
+
+    local scaleNote = configFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    scaleNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -500)
+    scaleNote:SetWidth(480)
+    scaleNote:SetJustifyH("LEFT")
+    scaleNote:SetText("Each unit frame keeps its own portrait scale. Values are clamped from 0.02 to 30.00. The slider uses a logarithmic range so both tiny and very large portraits remain practical to select.")
+
     local note = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    note:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -352)
+    note:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -548)
     note:SetWidth(480)
     note:SetJustifyH("LEFT")
     note:SetText(
         "Installing this module does not replace Blizzard frames automatically. Enable only the DML frames you want. " ..
-        "DML frames support normal left-click targeting and right-click unit menus. Frame enable/disable changes are blocked during combat."
+        "DML frames support normal left-click targeting and Blizzard-style right-click unit menus. Frame enable/disable changes are blocked during combat."
     )
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
