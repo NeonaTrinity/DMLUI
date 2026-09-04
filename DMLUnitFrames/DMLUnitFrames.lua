@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.100"
+UF.VERSION = "2.0.102"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -115,7 +115,7 @@ UF.partyGroupHandle = nil
 UF.externalPlayerCastBarActive = false
 
 local defaults = {
-    version = 8,
+    version = 9,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -128,6 +128,7 @@ local defaults = {
     partyPetPosition = "RIGHT",
     partySpacing = 8,
     showPortrait = true,
+    portraitType = "2D",
     showHealthText = true,
     showResourceText = true,
     showLevel = true,
@@ -275,6 +276,7 @@ local function CopyDefaults(reset)
     if DB.partyPetPosition ~= "BELOW" then DB.partyPetPosition = "RIGHT" end
     DB.partySpacing = ClampPartySpacing(DB.partySpacing)
     DB.showPortrait = DB.showPortrait ~= false
+    if DB.portraitType ~= "3D" and DB.portraitType ~= "CLASS" then DB.portraitType = "2D" end
     DB.showHealthText = DB.showHealthText ~= false
     DB.showResourceText = DB.showResourceText ~= false
     DB.showLevel = DB.showLevel ~= false
@@ -1087,6 +1089,87 @@ local function UpdateAllCastBars()
     UpdateCastBar("targettarget")
 end
 
+local CLASS_ICON_COORDS_FALLBACK = {
+    WARRIOR = { 0, 0.25, 0, 0.25 },
+    MAGE = { 0.25, 0.49609375, 0, 0.25 },
+    ROGUE = { 0.49609375, 0.7421875, 0, 0.25 },
+    DRUID = { 0.7421875, 0.98828125, 0, 0.25 },
+    HUNTER = { 0, 0.25, 0.25, 0.5 },
+    SHAMAN = { 0.25, 0.49609375, 0.25, 0.5 },
+    PRIEST = { 0.49609375, 0.7421875, 0.25, 0.5 },
+    WARLOCK = { 0.7421875, 0.98828125, 0.25, 0.5 },
+    PALADIN = { 0, 0.25, 0.5, 0.75 },
+    DEATHKNIGHT = { 0.25, 0.49609375, 0.5, 0.75 }
+}
+
+local function Show2DPortrait(frame, unit)
+    if frame.portraitModel then frame.portraitModel:Hide() end
+    frame.portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    if SetPortraitTexture then SetPortraitTexture(frame.portrait, unit) end
+    frame.portrait:Show()
+end
+
+local function ShowClassPortrait(frame, unit)
+    -- Class icons are for the player/friendly player units. Hostile units,
+    -- including enemy players, intentionally keep their normal 2D portrait.
+    if not (UnitIsPlayer and UnitIsPlayer(unit)) or (UnitCanAttack and UnitCanAttack("player", unit)) then
+        Show2DPortrait(frame, unit)
+        return
+    end
+    local _, classToken = UnitClass(unit)
+    local coords = classToken and ((CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[classToken]) or CLASS_ICON_COORDS_FALLBACK[classToken])
+    if not coords then
+        Show2DPortrait(frame, unit)
+        return
+    end
+    if frame.portraitModel then frame.portraitModel:Hide() end
+    frame.portrait:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
+    frame.portrait:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
+    frame.portrait:Show()
+end
+
+local function Show3DPortrait(frame, unit)
+    local model = frame.portraitModel
+    if not model or not model.SetUnit then
+        Show2DPortrait(frame, unit)
+        return
+    end
+    frame.portrait:Hide()
+    model:Show()
+    model:SetUnit(unit)
+    if model.SetPortraitZoom then model:SetPortraitZoom(1) end
+    if model.SetPosition then model:SetPosition(0, 0, 0) end
+end
+
+local function UpdatePortraitDisplay(frame, unit)
+    if not DB.showPortrait then
+        frame.portrait:Hide()
+        if frame.portraitModel then frame.portraitModel:Hide() end
+        frame.portraitBorder:Hide()
+        if frame.classificationDragon then frame.classificationDragon:Hide() end
+        return
+    end
+
+    frame.portraitBorder:Show()
+    if DB.portraitType == "3D" then
+        Show3DPortrait(frame, unit)
+    elseif DB.portraitType == "CLASS" then
+        ShowClassPortrait(frame, unit)
+    else
+        Show2DPortrait(frame, unit)
+    end
+
+    if frame.classificationDragon then
+        local dragonTexture = GetClassificationDragonTexture(unit)
+        if dragonTexture then
+            frame.classificationDragon:SetTexture(dragonTexture)
+            frame.classificationDragon:Show()
+        else
+            frame.classificationDragon:Hide()
+        end
+    end
+end
+
 local function UpdateFrame(key)
     local frame = UF.frames[key]
     local definition = GetDefinition(key)
@@ -1137,24 +1220,7 @@ local function UpdateFrame(key)
 
     UpdateClassCreatureText(frame, unit)
 
-    if DB.showPortrait then
-        if SetPortraitTexture then SetPortraitTexture(frame.portrait, unit) end
-        frame.portrait:Show()
-        frame.portraitBorder:Show()
-        if frame.classificationDragon then
-            local dragonTexture = GetClassificationDragonTexture(unit)
-            if dragonTexture then
-                frame.classificationDragon:SetTexture(dragonTexture)
-                frame.classificationDragon:Show()
-            else
-                frame.classificationDragon:Hide()
-            end
-        end
-    else
-        frame.portrait:Hide()
-        frame.portraitBorder:Hide()
-        if frame.classificationDragon then frame.classificationDragon:Hide() end
-    end
+    UpdatePortraitDisplay(frame, unit)
 
     local health = tonumber(UnitHealth(unit)) or 0
     local healthMax = tonumber(UnitHealthMax(unit)) or 0
@@ -1440,10 +1506,24 @@ local function CreateUnitFrame(key)
     portrait:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
     portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+    local portraitModel = CreateFrame("PlayerModel", nil, frame)
+    portraitModel:SetWidth(metrics.portrait)
+    portraitModel:SetHeight(metrics.portrait)
+    portraitModel:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
+    portraitModel:SetFrameLevel(frame:GetFrameLevel() + 1)
+    portraitModel:Hide()
+
+    -- Keep classification/combat artwork above the 3D model as well as the 2D texture.
+    local portraitOverlay = CreateFrame("Frame", nil, frame)
+    portraitOverlay:SetWidth(metrics.portraitBorder * 1.75)
+    portraitOverlay:SetHeight(metrics.portraitBorder * 1.65)
+    portraitOverlay:SetPoint("CENTER", portraitBorder, "CENTER", 4, 0)
+    portraitOverlay:SetFrameLevel(frame:GetFrameLevel() + 2)
+
     -- Blizzard's rare/elite target-frame textures contain the stock silver/gold
     -- dragon ornament around the portrait area. Crop the right side so the
     -- ornament can sit around DML's portrait without replacing the whole frame.
-    local classificationDragon = frame:CreateTexture(nil, "OVERLAY")
+    local classificationDragon = portraitOverlay:CreateTexture(nil, "OVERLAY")
     classificationDragon:SetWidth(metrics.portraitBorder * 1.65)
     classificationDragon:SetHeight(metrics.portraitBorder * 1.55)
     classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", 5, 0)
@@ -1452,7 +1532,7 @@ local function CreateUnitFrame(key)
 
     local combatIcon
     if key == "player" or definition.partyMember then
-        combatIcon = frame:CreateTexture(nil, "OVERLAY")
+        combatIcon = portraitOverlay:CreateTexture(nil, "OVERLAY")
         combatIcon:SetWidth(isParty and 15 or 18)
         combatIcon:SetHeight(isParty and 15 or 18)
         combatIcon:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
@@ -1605,6 +1685,8 @@ local function CreateUnitFrame(key)
     end)
 
     frame.portrait = portrait
+    frame.portraitModel = portraitModel
+    frame.portraitOverlay = portraitOverlay
     frame.portraitBorder = portraitBorder
     frame.classificationDragon = classificationDragon
     frame.combatIcon = combatIcon
@@ -1942,6 +2024,12 @@ local function RefreshConfig()
     configControls.showPartyPets:SetChecked(DB.showPartyPets and 1 or nil)
     configControls.movePartyAsOne:SetChecked(DB.movePartyAsOne and 1 or nil)
     configControls.showPortrait:SetChecked(DB.showPortrait and 1 or nil)
+    if configControls.portraitType then
+        UIDropDownMenu_SetSelectedValue(configControls.portraitType, DB.portraitType)
+        local portraitLabels = { ["2D"] = "2D Portrait", ["3D"] = "3D Portrait", ["CLASS"] = "Class Icon" }
+        UIDropDownMenu_SetText(configControls.portraitType, portraitLabels[DB.portraitType] or "2D Portrait")
+        SetWidgetEnabled(configControls.portraitType, DB.showPortrait)
+    end
     configControls.showHealthText:SetChecked(DB.showHealthText and 1 or nil)
     configControls.showResourceText:SetChecked(DB.showResourceText and 1 or nil)
     configControls.showLevel:SetChecked(DB.showLevel and 1 or nil)
@@ -1988,6 +2076,7 @@ local function ApplyConfig()
     DB.showPartyPets = configControls.showPartyPets:GetChecked() and true or false
     DB.movePartyAsOne = configControls.movePartyAsOne:GetChecked() and true or false
     DB.showPortrait = configControls.showPortrait:GetChecked() and true or false
+    if DB.portraitType ~= "3D" and DB.portraitType ~= "CLASS" then DB.portraitType = "2D" end
     DB.showHealthText = configControls.showHealthText:GetChecked() and true or false
     DB.showResourceText = configControls.showResourceText:GetChecked() and true or false
     DB.showLevel = configControls.showLevel:GetChecked() and true or false
@@ -2257,26 +2346,63 @@ local function CreateConfigFrame()
     local section2 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     section2:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -58)
     section2:SetText("Display")
-    CreateCheckField(configFrame, "showPortrait", "Show portrait", 310, -78)
-    CreateCheckField(configFrame, "showHealthText", "Show health text", 310, -108)
-    CreateCheckField(configFrame, "showResourceText", "Show resource text", 310, -138)
-    CreateCheckField(configFrame, "showLevel", "Show level", 310, -168)
-    CreateCheckField(configFrame, "showClass", "Show class", 310, -198)
-    CreateCheckField(configFrame, "useClassColorClassText", "Use class color for class text", 310, -228)
-    CreateCheckField(configFrame, "showCreatureType", "Show creature type", 310, -258)
+    local showPortraitCheck = CreateCheckField(configFrame, "showPortrait", "Show portrait", 310, -78)
+    showPortraitCheck:SetScript("OnClick", function()
+        DB.showPortrait = showPortraitCheck:GetChecked() and true or false
+        SetWidgetEnabled(configControls.portraitType, DB.showPortrait)
+        UpdateAllFrames()
+    end)
+
+    local portraitTypeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    portraitTypeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -116)
+    portraitTypeLabel:SetText("Portrait type:")
+    local portraitTypeDropDown = CreateFrame("Frame", "DMLUIUnitFramesPortraitTypeDropDown", configFrame, "UIDropDownMenuTemplate")
+    portraitTypeDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 390, -100)
+    UIDropDownMenu_SetWidth(portraitTypeDropDown, 115)
+    UIDropDownMenu_Initialize(portraitTypeDropDown, function()
+        local options = {
+            { value = "2D", text = "2D Portrait" },
+            { value = "3D", text = "3D Portrait" },
+            { value = "CLASS", text = "Class Icon" }
+        }
+        for j = 1, #options do
+            local option = options[j]
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = option.text
+            info.value = option.value
+            info.checked = (DB.portraitType == option.value)
+            info.func = function(button)
+                DB.portraitType = button.value or option.value
+                UIDropDownMenu_SetSelectedValue(portraitTypeDropDown, DB.portraitType)
+                UIDropDownMenu_SetText(portraitTypeDropDown, option.text)
+                UpdateAllFrames()
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+    portraitTypeDropDown.dmlIsDropDown = true
+    portraitTypeDropDown.dmlLabel = portraitTypeLabel
+    configControls.portraitType = portraitTypeDropDown
+
+    CreateCheckField(configFrame, "showHealthText", "Show health text", 310, -148)
+    CreateCheckField(configFrame, "showResourceText", "Show resource text", 310, -178)
+    CreateCheckField(configFrame, "showLevel", "Show level", 310, -208)
+    CreateCheckField(configFrame, "showClass", "Show class", 310, -238)
+    CreateCheckField(configFrame, "useClassColorClassText", "Use class color for class text", 310, -268)
+    CreateCheckField(configFrame, "showCreatureType", "Show creature type", 310, -298)
 
     local section3 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    section3:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -302)
+    section3:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -342)
     section3:SetText("Positioning")
-    CreateCheckField(configFrame, "showAnchors", "Show anchors", 310, -322)
-    CreateCheckField(configFrame, "locked", "Lock frames", 310, -352)
+    CreateCheckField(configFrame, "showAnchors", "Show anchors", 310, -362)
+    CreateCheckField(configFrame, "locked", "Lock frames", 310, -392)
 
     local petPosLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    petPosLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -392)
+    petPosLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -432)
     petPosLabel:SetText("Party pet position:")
     configControls.partyPetPositionLabel = petPosLabel
     local petPosDropDown = CreateFrame("Frame", "DMLUIUnitFramesPartyPetPositionDropDown", configFrame, "UIDropDownMenuTemplate")
-    petPosDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 410, -374)
+    petPosDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 410, -414)
     UIDropDownMenu_SetWidth(petPosDropDown, 90)
     UIDropDownMenu_Initialize(petPosDropDown, function()
         local options = { { value = "RIGHT", text = "Right" }, { value = "BELOW", text = "Below" } }
@@ -2298,11 +2424,11 @@ local function CreateConfigFrame()
     configControls.partyPetPosition = petPosDropDown
 
     local spacingLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    spacingLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -435)
+    spacingLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, -475)
     spacingLabel:SetText("Party spacing:")
     configControls.partySpacingLabel = spacingLabel
     local spacingSlider = CreateFrame("Slider", "DMLUIUnitFramesPartySpacingSlider", configFrame, "OptionsSliderTemplate")
-    spacingSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 318, -457)
+    spacingSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 318, -497)
     spacingSlider:SetWidth(180)
     spacingSlider:SetHeight(16)
     spacingSlider:SetMinMaxValues(UF.PARTY_SPACING_MIN, UF.PARTY_SPACING_MAX)
@@ -2318,7 +2444,7 @@ local function CreateConfigFrame()
     local spacingEdit = CreateFrame("EditBox", "DMLUIUnitFramesPartySpacingEdit", configFrame, "InputBoxTemplate")
     spacingEdit:SetWidth(55)
     spacingEdit:SetHeight(22)
-    spacingEdit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 430, -507)
+    spacingEdit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 430, -547)
     spacingEdit:SetAutoFocus(false)
     spacingEdit:SetNumeric(true)
     spacingEdit:SetMaxLetters(3)
@@ -2337,7 +2463,7 @@ local function CreateConfigFrame()
     configControls.partySpacingEdit = spacingEdit
 
     local castSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -560)
+    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -600)
     castSection:SetText("Attached cast bars")
 
     local function CreateCastBarRow(controlKey, labelText, y, dbPositionKey)
@@ -2367,9 +2493,9 @@ local function CreateConfigFrame()
         return check, dd
     end
 
-    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -585, "playerCastBarPosition")
-    CreateCastBarRow("showTargetCastBar", "Target cast bar", -615, "targetCastBarPosition")
-    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -645, "targetTargetCastBarPosition")
+    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -625, "playerCastBarPosition")
+    CreateCastBarRow("showTargetCastBar", "Target cast bar", -655, "targetCastBarPosition")
+    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -685, "targetTargetCastBarPosition")
 
     -- Column 3: colors and range fading.
     local colorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")

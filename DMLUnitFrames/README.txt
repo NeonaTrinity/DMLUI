@@ -1,3 +1,9 @@
+DMLUI Unit Frames 2.0.102
+
+New in 2.0.102:
+- Portrait type dropdown: 2D Portrait, 3D Portrait, Class Icon.
+- Class Icon applies to the player/friendly player units; enemies (including enemy players) and non-player units fall back to 2D portraits.
+
 DMLUI - Unit Frames 2.0.100
 
 2.0.100 additions:

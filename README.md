@@ -1,4 +1,4 @@
-# DMLUI 2.0.101
+# DMLUI 2.0.102
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -7,10 +7,18 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUI_Core/` - shared minimap launcher and module framework (2.0.100).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.100).
+- `DMLUnitFrames/` - Unit Frames module (2.0.102).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.101).
 
 
+
+
+## 2.0.102 highlights
+
+### Unit Frames
+- Added `Portrait type`: 2D Portrait, 3D Portrait, or Class Icon.
+- Class Icon uses the stock class-icon atlas for the player and friendly player units, and automatically falls back to 2D portraits for enemies (including enemy players), NPCs, pets, and other non-player units.
+- 3D Portrait uses a live PlayerModel in the existing portrait slot; frame layout and scaling are unchanged.
 
 ## 2.0.101 highlights
 

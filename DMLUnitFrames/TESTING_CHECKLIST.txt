@@ -37,3 +37,12 @@ REGRESSION
 - Name color swatch changes fallback name color.
 - Use class color as name overrides the custom name color for player units only.
 - Use class color for class text colors player class text independently of name coloring.
+
+2.0.102 portrait type checks
+- Portrait type dropdown offers 2D Portrait, 3D Portrait, and Class Icon.
+- 2D Portrait matches the previous DML portrait behavior.
+- 3D Portrait shows a live 3D model for player, target, focus, pet, ToT, party, and party-pet units.
+- Class Icon shows the correct class icon for the player and friendly player units (including friendly player targets/party members).
+- With Class Icon selected, enemies (including enemy players), NPCs, and pets fall back to their normal 2D portrait.
+- Rare/elite dragon ornament and combat icon remain above both 2D and 3D portraits.
+- Turning Show portrait off hides both texture and 3D model; turning it back on restores the selected mode.
