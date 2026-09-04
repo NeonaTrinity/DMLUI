@@ -5,7 +5,7 @@
 DMLCastBar = DMLCastBar or {}
 local CB = DMLCastBar
 
-CB.VERSION = "2.0.99"
+CB.VERSION = "2.0.101"
 CB.WIDTH_MIN = 100
 CB.WIDTH_MAX = 800
 CB.HEIGHT_MIN = 10
@@ -101,18 +101,41 @@ end
 local function ApplyStockCastBarVisibility()
     local stock = _G.CastingBarFrame
     if not stock then return end
+
     if DB.enabled then
         if not stockState then
             stockState = {
+                showCastbar = stock.showCastbar,
                 alpha = stock.GetAlpha and stock:GetAlpha() or 1,
                 mouse = stock.IsMouseEnabled and stock:IsMouseEnabled() or nil
             }
         end
-        if stock.SetAlpha then stock:SetAlpha(0) end
+
+        -- Stock Wrath's CastingBarFrame_OnEvent() explicitly checks
+        -- showCastbar before calling :Show(), and also resets alpha to 1
+        -- whenever a new cast/channel starts.  Therefore alpha alone is not
+        -- a durable way to suppress Blizzard's player cast bar.
+        stock.showCastbar = false
+        stock:Hide()
         if stock.EnableMouse then stock:EnableMouse(false) end
     elseif stockState then
+        if stockState.showCastbar == nil then
+            stock.showCastbar = true
+        else
+            stock.showCastbar = stockState.showCastbar
+        end
         if stock.SetAlpha then stock:SetAlpha(stockState.alpha or 1) end
-        if stock.EnableMouse and stockState.mouse ~= nil then stock:EnableMouse(stockState.mouse and true or false) end
+        if stock.EnableMouse and stockState.mouse ~= nil then
+            stock:EnableMouse(stockState.mouse and true or false)
+        end
+
+        -- If DML is disabled in the middle of a cast, immediately let the
+        -- Blizzard bar resync instead of waiting for the next spellcast.
+        if CastingBarFrame_UpdateIsShown then
+            CastingBarFrame_UpdateIsShown(stock)
+        elseif stock.showCastbar and (stock.casting or stock.channeling) then
+            stock:Show()
+        end
         stockState = nil
     end
 end
