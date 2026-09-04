@@ -1,17 +1,25 @@
-DMLUI - Unit Frames 2.0.96
+DMLUI - Unit Frames 2.0.98
 
-Optional DMLUI module for WoW 3.3.5a.
+Optional DMLUI unit-frame replacement module for WoW 3.3.5a.
 
-Features
-- Player, Target, Focus, Pet, Target-of-Target, Party and Party Pet frames.
-- Grouped or freeform party positioning, party spacing, party-pet placement and shared party/member scales.
-- Entire-frame scaling from 0.50x to 2.00x, including an All selector.
-- Blizzard-style right-click unit menus.
-- Optional target-of-target display, aggro borders and player/party combat icons.
-- Party and enemy-target range fading driven by a selected known spell from the character spellbook.
-  The spell menus are filtered to ranged helpful/harmful spells, collapse duplicate ranks, cap the list,
-  and show spell icon/name/range. No artificial yard presets are used.
-- Hostile target levels use Blizzard difficulty colors; unknown/boss levels use the Blizzard skull texture.
-- Optional Player, Target and Target-of-Target cast bars, each independently placed Above or Below.
+2.0.98 additions/fixes:
+- Fixed stock 3.3.5a spellbook range scanning. The client uses the original
+  nine-value GetSpellInfo return layout, and DMLUI now reads cast/range values
+  from their correct positions.
+- Known ranged helpful/harmful spells populate the range dropdown correctly,
+  remain collapsed to one entry per spell name, and are capped to keep menus compact.
+- Aggro highlight is now a dedicated red overlay drawn outside the full unit frame
+  so portraits cannot cover it.
+- Added Aggro border intensity (1-8) with both slider and numeric entry.
 
-Installing this module does not replace Blizzard frames until the corresponding DML options are enabled.
+Existing features include:
+- Player, Target, Target of Target, Focus, Pet, Party and Party Pet frames.
+- Grouped or freeform party layouts.
+- Whole-frame scaling (0.50x-2.00x).
+- Party/enemy range fading based on selected known spells.
+- Aggro borders and combat icons.
+- Attached Player, Target and Target-of-Target cast bars.
+- Configurable frame/resource colors, class-colored names, and rare/elite art.
+- Movable anchors and reset controls.
+
+Slash command: /dmluf

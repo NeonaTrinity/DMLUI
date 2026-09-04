@@ -1,4 +1,4 @@
-DMLUI Core 2.0.96
+DMLUI Core 2.0.97
 =============
 
 DMLUI is the shared launcher/framework for modular WoW 3.3.5a UI addons.
@@ -14,3 +14,5 @@ Install DMLUI_Core plus only the feature modules you want. Missing feature modul
 visible but disabled in the DMLUI launcher.
 
 The DMLUI minimap button opens the launcher. /dmlui also opens it.
+
+2.0.97: Added the Cast Bars launcher/module slot.

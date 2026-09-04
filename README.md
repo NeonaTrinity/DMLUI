@@ -1,21 +1,28 @@
-# DMLUI 2.0.96
+# DMLUI 2.0.98
 
-DMLUI is a modular World of Warcraft 3.3.5a interface project. Install only the modules you want.
+DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
-Included folders:
-- `DMLUI_Core/` - shared launcher/module framework (2.0.96).
-- `DMLCooldownBar/` - Action Bars module (2.0.91; unchanged in this release).
-- `DMLCooldownBar_J3Spells/` - optional J3Spells/ALE integration (2.0.91; unchanged in this release).
-- `DMLUnitFrames/` - Unit Frames module (2.0.96).
+## Included modules
 
-## 2.0.96 highlights
+- `DMLUI_Core/` - shared minimap launcher and module framework (2.0.97).
+- `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
+- `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
+- `DMLUnitFrames/` - Unit Frames module (2.0.98).
+- `DMLCastBar/` - optional movable/customizable player cast bar (unchanged from 2.0.97).
 
-Unit Frames:
-- Party and hostile Target range fading now use a player-selected spell from the character's own spellbook instead of artificial yard presets.
-- Range menus are filtered to known ranged helpful/harmful spells, collapse duplicate ranks, cap the menu size, and show spell icon/name/max range.
-- Party range fading also applies to the DML Target frame when the selected target is that party member.
-- Hostile unit levels use Blizzard's gray/green/yellow/orange/red difficulty colors; unknown/boss levels use the stock skull texture.
-- Optional cast bars for Player, Target, and Target of Target, each independently placed Above or Below its DML unit frame.
-- Existing aggro highlight, combat icon, target-of-target visibility, party layout, freeform positioning, and 0.50x-2.00x complete-frame scaling remain intact.
+## 2.0.98 highlights
 
-Range checking uses `IsSpellInRange` with a spell the character actually knows. It does not use item-based range checks or item-info queries.
+### Unit Frames
+- Fixed the spell-range dropdown on stock WoW 3.3.5a by reading the original nine-value `GetSpellInfo` return layout correctly.
+- Spellbook candidates are resolved from actual spellbook slots with `GetSpellName` / `GetSpellBookItemInfo`, then queried by spell ID when possible.
+- Helpful/harmful range lists remain rank-collapsed, capped, and limited to meaningful ranged spells.
+- Reworked aggro highlighting into a red overlay drawn outside the complete unit frame so portraits cannot cover it.
+- Added `Aggro border intensity` slider + numeric field, clamped from 1-8.
+
+Existing Unit Frames features remain available: player/target/focus/pet/target-of-target/party frames, scaling, freeform/grouped party positioning, spell-based range fading, combat icons, attached cast bars, configurable colors, class-colored names, and rare/elite classification art.
+
+## Slash commands
+
+- `/dmlui` - DMLUI launcher.
+- `/dmluf` - Unit Frames settings.
+- `/dmlcast` - Cast Bar settings.

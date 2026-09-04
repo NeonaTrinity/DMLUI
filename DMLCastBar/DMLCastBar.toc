@@ -1,0 +1,12 @@
+## Interface: 30300
+## Title: DMLUI - Cast Bar
+## Notes: Optional movable and customizable DMLUI player cast bar.
+## Author: Spaghetti Dog Games
+## Version: 2.0.97
+## DefaultState: Enabled
+## LoadOnDemand: 0
+## Dependencies: DMLUI_Core
+## OptionalDeps: DMLUnitFrames
+## SavedVariables: DMLCastBarDB
+
+DMLCastBar.lua

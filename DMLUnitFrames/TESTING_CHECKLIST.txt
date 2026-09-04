@@ -1,31 +1,26 @@
-DMLUI Unit Frames 2.0.96 - test checklist
+DMLUI Unit Frames 2.0.98 - test checklist
 
-Core frame behavior
-[ ] Player/Target/Focus/Pet/ToT/Party frames enable and disable correctly.
-[ ] Left-click targets; right-click opens the normal Blizzard unit menu.
-[ ] Frame scales clamp to 0.50x-2.00x; All applies uniformly.
-[ ] Grouped/freeform party positions remain separate and spacing applies only in grouped mode.
+RANGE SPELLS
+[ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
+[ ] Healing Wave appears with its icon and detected range.
+[ ] Duplicate ranks collapse to one Healing Wave entry.
+[ ] Hostile range dropdown contains known ranged harmful spells when available.
+[ ] Selected spell persists across /reload.
+[ ] Out-of-range fading changes only when the corresponding fade checkbox is enabled.
 
-Range fading
-[ ] Party spell dropdown contains only known ranged helpful spells and collapses duplicate ranks.
-[ ] Enemy Target spell dropdown contains only known ranged harmful spells and collapses duplicate ranks.
-[ ] Dropdown rows show spell icon, spell name and detected max range.
-[ ] A selected friendly spell fades out-of-range party members and also the Target frame when targeting that party member.
-[ ] A selected harmful spell fades an out-of-range hostile Target frame.
-[ ] Fade amount clamps to 10-90%.
-[ ] Learning/unlearning/talent changes rebuild the spell lists without /reload.
+AGGRO HIGHLIGHT
+[ ] Player/party frame with aggro shows a red border fully outside the frame/portrait.
+[ ] Portrait does not cover any part of the red aggro border.
+[ ] Aggro border disappears when aggro is lost.
+[ ] Aggro border intensity slider ranges from 1 through 8.
+[ ] Numeric intensity input clamps to 1-8.
+[ ] Increasing intensity visibly increases border width/opacity.
+[ ] Normal gray frame border remains unchanged when aggro highlight is absent.
 
-Levels
-[ ] Hostile Target/ToT/Focus levels use gray/green/yellow/orange/red Blizzard difficulty colors.
-[ ] Units with unknown/boss level show the stock skull instead of a numeric level.
-
-Cast bars
-[ ] Player cast bar toggle works and Above/Below placement works.
-[ ] Target cast bar toggle works for casts and channels, with Above/Below placement.
-[ ] Target-of-Target cast bar toggle works for casts and channels, with Above/Below placement.
-[ ] Cast bars track start/stop/fail/interrupt/delay/channel events and hide at completion.
-[ ] Cast bars inherit the selected unit-frame scale and match frame width.
-
-Regression
-[ ] Action Bars and J3Spells behavior is unchanged.
-[ ] No item-based range checks are introduced.
+REGRESSION
+[ ] Unit Frames page opens from DMLUI launcher.
+[ ] Player/Target/Focus/Pet/ToT/Party replacements still toggle correctly.
+[ ] Whole-frame scale still clamps to 0.50x-2.00x.
+[ ] Party grouped/freeform positioning still works.
+[ ] Attached cast bars still work.
+[ ] DMLCastBar interop still suppresses only the attached player cast bar when active.

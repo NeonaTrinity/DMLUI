@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.96"
+UF.VERSION = "2.0.98"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -32,6 +32,9 @@ UF.RANGE_LIST_LIMIT = 18
 UF.RANGE_MIN_YARDS = 20
 UF.CAST_BAR_HEIGHT = 14
 UF.CAST_BAR_GAP = 3
+UF.AGGRO_BORDER_MIN = 1
+UF.AGGRO_BORDER_MAX = 8
+UF.AGGRO_BORDER_PAD = 2
 UF.DYNAMIC_MEMBER_KEYS = { "player", "party1", "party2", "party3", "party4" }
 
 local DB
@@ -42,6 +45,7 @@ local adjustmentSelection = "player"
 local adjustmentRefreshing = false
 local partyLayoutRefreshing = false
 local rangeControlsRefreshing = false
+local aggroControlsRefreshing = false
 local dynamicElapsed = 0
 local rangeCacheDirty = false
 local rangeCacheElapsed = 0
@@ -108,9 +112,10 @@ UF.blizzardStates = {}
 UF.stockChildStates = {}
 UF.partyGroupMover = nil
 UF.partyGroupHandle = nil
+UF.externalPlayerCastBarActive = false
 
 local defaults = {
-    version = 5,
+    version = 7,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
@@ -130,6 +135,7 @@ local defaults = {
     showAnchors = true,
     locked = false,
     highlightAggro = false,
+    aggroBorderIntensity = 2,
     displayCombatIcon = false,
     fadePartyOutOfRange = false,
     partyRangeSpell = "",
@@ -143,6 +149,16 @@ local defaults = {
     targetCastBarPosition = "BELOW",
     showTargetTargetCastBar = false,
     targetTargetCastBarPosition = "BELOW",
+    useClassColorNames = false,
+    useDragonPortraits = true,
+    colors = {
+        background = { r = 0.035, g = 0.035, b = 0.035 },
+        health = { r = 0.10, g = 0.75, b = 0.15 },
+        mana = { r = 0.00, g = 0.45, b = 1.00 },
+        rage = { r = 0.90, g = 0.10, b = 0.10 },
+        energy = { r = 1.00, g = 0.82, b = 0.00 },
+        runic = { r = 0.00, g = 0.82, b = 1.00 }
+    },
     positions = {},
     frameScales = {},
     partyGroupPosition = nil,
@@ -180,6 +196,40 @@ local function ClampFadePercent(value)
     return math.floor(value + 0.5)
 end
 
+local function ClampAggroBorderIntensity(value)
+    value = tonumber(value) or defaults.aggroBorderIntensity
+    if value < UF.AGGRO_BORDER_MIN then value = UF.AGGRO_BORDER_MIN end
+    if value > UF.AGGRO_BORDER_MAX then value = UF.AGGRO_BORDER_MAX end
+    return math.floor(value + 0.5)
+end
+
+local function CopyTable(value)
+    if type(value) ~= "table" then return value end
+    local copy = {}
+    for key, child in pairs(value) do
+        copy[key] = CopyTable(child)
+    end
+    return copy
+end
+
+local function ClampColorChannel(value, fallback)
+    value = tonumber(value)
+    if value == nil then value = tonumber(fallback) or 1 end
+    if value < 0 then value = 0 end
+    if value > 1 then value = 1 end
+    return value
+end
+
+local function NormalizeColor(value, fallback)
+    value = type(value) == "table" and value or {}
+    fallback = type(fallback) == "table" and fallback or { r = 1, g = 1, b = 1 }
+    return {
+        r = ClampColorChannel(value.r, fallback.r),
+        g = ClampColorChannel(value.g, fallback.g),
+        b = ClampColorChannel(value.b, fallback.b)
+    }
+end
+
 local function CopyDefaults(reset)
     if reset or type(DMLUnitFramesDB) ~= "table" then
         DMLUnitFramesDB = {}
@@ -192,7 +242,7 @@ local function CopyDefaults(reset)
     for key, value in pairs(defaults) do
         if reset or DB[key] == nil then
             if type(value) == "table" then
-                DB[key] = {}
+                DB[key] = CopyTable(value)
             else
                 DB[key] = value
             end
@@ -228,6 +278,7 @@ local function CopyDefaults(reset)
     DB.showAnchors = DB.showAnchors ~= false
     DB.locked = DB.locked and true or false
     DB.highlightAggro = DB.highlightAggro and true or false
+    DB.aggroBorderIntensity = ClampAggroBorderIntensity(DB.aggroBorderIntensity)
     DB.displayCombatIcon = DB.displayCombatIcon and true or false
     DB.fadePartyOutOfRange = DB.fadePartyOutOfRange and true or false
     DB.partyRangeSpell = type(DB.partyRangeSpell) == "string" and DB.partyRangeSpell or ""
@@ -241,6 +292,15 @@ local function CopyDefaults(reset)
     if DB.targetCastBarPosition ~= "ABOVE" then DB.targetCastBarPosition = "BELOW" end
     DB.showTargetTargetCastBar = DB.showTargetTargetCastBar and true or false
     if DB.targetTargetCastBarPosition ~= "ABOVE" then DB.targetTargetCastBarPosition = "BELOW" end
+    DB.useClassColorNames = DB.useClassColorNames and true or false
+    DB.useDragonPortraits = DB.useDragonPortraits ~= false
+    if type(DB.colors) ~= "table" then DB.colors = {} end
+    DB.colors.background = NormalizeColor(DB.colors.background, defaults.colors.background)
+    DB.colors.health = NormalizeColor(DB.colors.health, defaults.colors.health)
+    DB.colors.mana = NormalizeColor(DB.colors.mana, defaults.colors.mana)
+    DB.colors.rage = NormalizeColor(DB.colors.rage, defaults.colors.rage)
+    DB.colors.energy = NormalizeColor(DB.colors.energy, defaults.colors.energy)
+    DB.colors.runic = NormalizeColor(DB.colors.runic, defaults.colors.runic)
 
     if type(DB.positions) ~= "table" then DB.positions = {} end
     if type(DB.frameScales) ~= "table" then DB.frameScales = {} end
@@ -548,9 +608,26 @@ local function GetPowerValues(unit)
     return tonumber(UnitMana(unit)) or 0, tonumber(UnitManaMax(unit)) or 0
 end
 
+local function GetDBColor(key, fallback)
+    if DB and DB.colors and DB.colors[key] then return DB.colors[key] end
+    return fallback or { r = 1, g = 1, b = 1 }
+end
+
 local function SetPowerColor(statusBar, unit)
     local powerType, powerToken
     if UnitPowerType then powerType, powerToken = UnitPowerType(unit) end
+    local key
+    if powerToken == "MANA" or powerType == 0 then key = "mana"
+    elseif powerToken == "RAGE" or powerType == 1 then key = "rage"
+    elseif powerToken == "ENERGY" or powerType == 3 then key = "energy"
+    elseif powerToken == "RUNIC_POWER" or powerType == 6 then key = "runic" end
+
+    if key then
+        local color = GetDBColor(key)
+        statusBar:SetStatusBarColor(color.r or 0, color.g or 0.4, color.b or 1)
+        return
+    end
+
     local color
     if ManaBarColor then
         color = ManaBarColor[powerType]
@@ -563,29 +640,83 @@ local function SetPowerColor(statusBar, unit)
     end
 end
 
+local function GetClassificationSuffix(unit)
+    if not UnitClassification then return "" end
+    local classification = UnitClassification(unit)
+    if classification == "rareelite" then return "R+" end
+    if classification == "rare" then return "R" end
+    if classification == "elite" or classification == "worldboss" then return "+" end
+    return ""
+end
+
+local function GetClassificationDragonTexture(unit)
+    if not DB or not DB.useDragonPortraits or not UnitClassification then return nil end
+    local classification = UnitClassification(unit)
+    if classification == "rareelite" then
+        return "Interface\\TargetingFrame\\UI-TargetingFrame-Rare-Elite"
+    elseif classification == "rare" then
+        return "Interface\\TargetingFrame\\UI-TargetingFrame-Rare"
+    elseif classification == "elite" or classification == "worldboss" then
+        return "Interface\\TargetingFrame\\UI-TargetingFrame-Elite"
+    end
+    return nil
+end
+
+local function ApplyNameColor(frame, unit)
+    if not frame or not frame.nameText then return end
+    if DB and DB.useClassColorNames and UnitIsPlayer and UnitIsPlayer(unit) and UnitClass then
+        local _, classToken = UnitClass(unit)
+        local colors = CUSTOM_CLASS_COLORS or RAID_CLASS_COLORS
+        local color = colors and classToken and colors[classToken]
+        if color then
+            frame.nameText:SetTextColor(color.r or 1, color.g or 1, color.b or 1)
+            return
+        end
+    end
+    frame.nameText:SetTextColor(1, 0.82, 0)
+end
+
 local rangeSpellLists = { friend = {}, harm = {} }
 local rangeSpellLookup = { friend = {}, harm = {} }
 
 local function GetSpellBookRangeCandidate(slot)
-    if not GetSpellInfo then return nil end
-    local name, rank, icon, castTime, minRange, maxRange, spellID = GetSpellInfo(slot, BOOKTYPE_SPELL)
-    if not name and GetSpellName then
-        name, rank = GetSpellName(slot, BOOKTYPE_SPELL)
-        if name then
-            name, rank, icon, castTime, minRange, maxRange, spellID = GetSpellInfo(name)
-        end
+    -- Stock Wrath 3.3.5 GetSpellInfo uses the old nine-return signature:
+    -- name, rank, icon, cost, isFunnel, powerType, castTime, minRange, maxRange.
+    -- Do not use the modern 6/7-return layout here. Resolve the spellbook slot
+    -- first, then query metadata by spell ID (or name as a fallback).
+    if not GetSpellName or not GetSpellInfo then return nil end
+
+    local bookName, bookRank = GetSpellName(slot, BOOKTYPE_SPELL)
+    if not bookName then return nil end
+
+    local spellID
+    if GetSpellBookItemInfo then
+        local spellType, id = GetSpellBookItemInfo(slot, BOOKTYPE_SPELL)
+        if spellType == "SPELL" then spellID = tonumber(id) end
     end
+
+    local name, rank, icon, cost, isFunnel, powerType, castTime, minRange, maxRange
+    if spellID then
+        name, rank, icon, cost, isFunnel, powerType, castTime, minRange, maxRange = GetSpellInfo(spellID)
+    else
+        name, rank, icon, cost, isFunnel, powerType, castTime, minRange, maxRange = GetSpellInfo(bookName)
+    end
+
+    name = name or bookName
+    rank = rank or bookRank or ""
+    if not icon and GetSpellTexture then icon = GetSpellTexture(slot, BOOKTYPE_SPELL) end
     maxRange = tonumber(maxRange) or 0
     minRange = tonumber(minRange) or 0
     if not name or maxRange < UF.RANGE_MIN_YARDS then return nil end
+
     return {
         name = name,
-        rank = rank or "",
+        rank = rank,
         icon = icon,
         castTime = tonumber(castTime) or 0,
         minRange = minRange,
         range = maxRange,
-        spellID = tonumber(spellID),
+        spellID = spellID,
         slot = slot
     }
 end
@@ -708,12 +839,50 @@ local function HasUnitAggro(unit)
     return false
 end
 
+local function ApplyAggroBorderGeometry(frame)
+    if not frame or not frame.aggroBorder then return end
+    local thickness = ClampAggroBorderIntensity(DB and DB.aggroBorderIntensity or defaults.aggroBorderIntensity)
+    local pad = UF.AGGRO_BORDER_PAD
+    local alpha = math.min(1, 0.58 + (thickness * 0.055))
+    local border = frame.aggroBorder
+
+    border.top:ClearAllPoints()
+    border.top:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, pad)
+    border.top:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, pad)
+    border.top:SetHeight(thickness)
+
+    border.bottom:ClearAllPoints()
+    border.bottom:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -pad, -pad)
+    border.bottom:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", pad, -pad)
+    border.bottom:SetHeight(thickness)
+
+    border.left:ClearAllPoints()
+    border.left:SetPoint("TOPRIGHT", frame, "TOPLEFT", -pad, pad)
+    border.left:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", -pad, -pad)
+    border.left:SetWidth(thickness)
+
+    border.right:ClearAllPoints()
+    border.right:SetPoint("TOPLEFT", frame, "TOPRIGHT", pad, pad)
+    border.right:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", pad, -pad)
+    border.right:SetWidth(thickness)
+
+    for _, texture in pairs(border) do
+        texture:SetTexture(1, 0.03, 0.03, alpha)
+    end
+end
+
 local function SetUnitAggroBorder(frame, highlighted)
-    if not frame or not frame.SetBackdropBorderColor then return end
-    if highlighted then
-        frame:SetBackdropBorderColor(1, 0.05, 0.05, 1)
-    else
-        frame:SetBackdropBorderColor(0.42, 0.42, 0.42, 1)
+    if not frame or not frame.aggroBorder then return end
+    ApplyAggroBorderGeometry(frame)
+    for _, texture in pairs(frame.aggroBorder) do
+        if highlighted then texture:Show() else texture:Hide() end
+    end
+end
+
+local function ApplyAllAggroBorderGeometry()
+    for idx = 1, #UF.DYNAMIC_MEMBER_KEYS do
+        local frame = UF.frames[UF.DYNAMIC_MEMBER_KEYS[idx]]
+        if frame then ApplyAggroBorderGeometry(frame) end
     end
 end
 
@@ -774,7 +943,10 @@ local function UpdateDynamicStates()
 end
 
 local function GetCastBarConfig(key)
-    if key == "player" then return DB.showPlayerCastBar, DB.playerCastBarPosition end
+    if key == "player" then
+        if UF.externalPlayerCastBarActive then return false, DB.playerCastBarPosition end
+        return DB.showPlayerCastBar, DB.playerCastBarPosition
+    end
     if key == "target" then return DB.showTargetCastBar, DB.targetCastBarPosition end
     if key == "targettarget" then return DB.showTargetTargetCastBar, DB.targetTargetCastBarPosition end
     return false, "BELOW"
@@ -852,6 +1024,9 @@ local function UpdateFrame(key)
     if not RegisterUnitWatch then frame:Show() end
 
     frame.nameText:SetText(UnitName(unit) or definition.label)
+    ApplyNameColor(frame, unit)
+    local backgroundColor = GetDBColor("background", defaults.colors.background)
+    frame:SetBackdropColor(backgroundColor.r, backgroundColor.g, backgroundColor.b, 0.92)
 
     local level = UnitLevel(unit)
     if DB.showLevel and frame.levelText then
@@ -860,7 +1035,7 @@ local function UpdateFrame(key)
             if frame.levelSkull then frame.levelSkull:Show() end
         else
             if frame.levelSkull then frame.levelSkull:Hide() end
-            frame.levelText:SetText(tostring(level or ""))
+            frame.levelText:SetText(tostring(level or "") .. GetClassificationSuffix(unit))
             if UnitCanAttack and UnitCanAttack("player", unit) and tonumber(level) then
                 local colorFunc = GetQuestDifficultyColor or GetDifficultyColor
                 local color = colorFunc and colorFunc(tonumber(level)) or nil
@@ -889,9 +1064,19 @@ local function UpdateFrame(key)
         if SetPortraitTexture then SetPortraitTexture(frame.portrait, unit) end
         frame.portrait:Show()
         frame.portraitBorder:Show()
+        if frame.classificationDragon then
+            local dragonTexture = GetClassificationDragonTexture(unit)
+            if dragonTexture then
+                frame.classificationDragon:SetTexture(dragonTexture)
+                frame.classificationDragon:Show()
+            else
+                frame.classificationDragon:Hide()
+            end
+        end
     else
         frame.portrait:Hide()
         frame.portraitBorder:Hide()
+        if frame.classificationDragon then frame.classificationDragon:Hide() end
     end
 
     local health = tonumber(UnitHealth(unit)) or 0
@@ -902,7 +1087,8 @@ local function UpdateFrame(key)
     if UnitIsDeadOrGhost and UnitIsDeadOrGhost(unit) then
         frame.healthBar:SetStatusBarColor(0.35, 0.35, 0.35)
     else
-        frame.healthBar:SetStatusBarColor(0.1, 0.75, 0.15)
+        local healthColor = GetDBColor("health", defaults.colors.health)
+        frame.healthBar:SetStatusBarColor(healthColor.r, healthColor.g, healthColor.b)
     end
     if DB.showHealthText then
         frame.healthText:SetText(tostring(health) .. " / " .. tostring(healthMax))
@@ -1153,6 +1339,18 @@ local function CreateUnitFrame(key)
     frame:SetBackdropColor(0.035, 0.035, 0.035, 0.92)
     frame:SetBackdropBorderColor(0.42, 0.42, 0.42, 1)
 
+    -- Aggro highlight is an overlay outside the unit frame rather than the
+    -- frame's normal backdrop border. This keeps the portrait from covering it
+    -- and lets intensity change the visible border thickness.
+    local aggroBorder = {}
+    aggroBorder.top = frame:CreateTexture(nil, "OVERLAY")
+    aggroBorder.bottom = frame:CreateTexture(nil, "OVERLAY")
+    aggroBorder.left = frame:CreateTexture(nil, "OVERLAY")
+    aggroBorder.right = frame:CreateTexture(nil, "OVERLAY")
+    frame.aggroBorder = aggroBorder
+    ApplyAggroBorderGeometry(frame)
+    for _, texture in pairs(aggroBorder) do texture:Hide() end
+
     local portraitBorder = frame:CreateTexture(nil, "BACKGROUND")
     portraitBorder:SetWidth(metrics.portraitBorder)
     portraitBorder:SetHeight(metrics.portraitBorder)
@@ -1164,6 +1362,16 @@ local function CreateUnitFrame(key)
     portrait:SetHeight(metrics.portrait)
     portrait:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
     portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+
+    -- Blizzard's rare/elite target-frame textures contain the stock silver/gold
+    -- dragon ornament around the portrait area. Crop the right side so the
+    -- ornament can sit around DML's portrait without replacing the whole frame.
+    local classificationDragon = frame:CreateTexture(nil, "OVERLAY")
+    classificationDragon:SetWidth(metrics.portraitBorder * 1.65)
+    classificationDragon:SetHeight(metrics.portraitBorder * 1.55)
+    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", 5, 0)
+    classificationDragon:SetTexCoord(0.57, 1.0, 0.0, 0.78)
+    classificationDragon:Hide()
 
     local combatIcon
     if key == "player" or definition.partyMember then
@@ -1318,6 +1526,7 @@ local function CreateUnitFrame(key)
 
     frame.portrait = portrait
     frame.portraitBorder = portraitBorder
+    frame.classificationDragon = classificationDragon
     frame.combatIcon = combatIcon
     frame.nameText = nameText
     frame.levelText = levelText
@@ -1408,6 +1617,42 @@ local function SetWidgetEnabled(widget, enabled)
     if widget.dmlLabel then
         if enabled then widget.dmlLabel:SetTextColor(1, 0.82, 0, 1) else widget.dmlLabel:SetTextColor(0.5, 0.5, 0.5, 1) end
     end
+end
+
+local function RefreshColorControls()
+    if not DB or not DB.colors then return end
+    local keys = { "background", "health", "mana", "rage", "energy", "runic" }
+    for i = 1, #keys do
+        local key = keys[i]
+        local swatch = configControls["color_" .. key]
+        local color = DB.colors[key]
+        if swatch and color and swatch.SetBackdropColor then
+            swatch:SetBackdropColor(color.r or 1, color.g or 1, color.b or 1, 1)
+        end
+    end
+end
+
+local function OpenColorPicker(colorKey)
+    if not DB or not DB.colors or not ColorPickerFrame then return end
+    local current = NormalizeColor(DB.colors[colorKey], defaults.colors[colorKey])
+    local previous = { r = current.r, g = current.g, b = current.b }
+    local function ApplyPickerColor()
+        local r, g, b = ColorPickerFrame:GetColorRGB()
+        DB.colors[colorKey] = NormalizeColor({ r = r, g = g, b = b }, defaults.colors[colorKey])
+        RefreshColorControls()
+        UpdateAllFrames()
+    end
+    ColorPickerFrame:Hide()
+    ColorPickerFrame.hasOpacity = false
+    ColorPickerFrame.opacityFunc = nil
+    ColorPickerFrame.func = ApplyPickerColor
+    ColorPickerFrame.cancelFunc = function()
+        DB.colors[colorKey] = previous
+        RefreshColorControls()
+        UpdateAllFrames()
+    end
+    ColorPickerFrame:SetColorRGB(current.r, current.g, current.b)
+    if ShowUIPanel then ShowUIPanel(ColorPickerFrame) else ColorPickerFrame:Show() end
 end
 
 local function GetAdjustmentScaleKey(selection)
@@ -1624,12 +1869,21 @@ local function RefreshConfig()
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
     configControls.locked:SetChecked(DB.locked and 1 or nil)
     configControls.highlightAggro:SetChecked(DB.highlightAggro and 1 or nil)
+    if configControls.aggroBorderSlider and configControls.aggroBorderEdit then
+        aggroControlsRefreshing = true
+        configControls.aggroBorderSlider:SetValue(DB.aggroBorderIntensity)
+        configControls.aggroBorderEdit:SetText(tostring(DB.aggroBorderIntensity))
+        aggroControlsRefreshing = false
+    end
     configControls.displayCombatIcon:SetChecked(DB.displayCombatIcon and 1 or nil)
     configControls.fadePartyOutOfRange:SetChecked(DB.fadePartyOutOfRange and 1 or nil)
     configControls.fadeTargetOutOfRange:SetChecked(DB.fadeTargetOutOfRange and 1 or nil)
     configControls.showPlayerCastBar:SetChecked(DB.showPlayerCastBar and 1 or nil)
     configControls.showTargetCastBar:SetChecked(DB.showTargetCastBar and 1 or nil)
     configControls.showTargetTargetCastBar:SetChecked(DB.showTargetTargetCastBar and 1 or nil)
+    configControls.useClassColorNames:SetChecked(DB.useClassColorNames and 1 or nil)
+    configControls.useDragonPortraits:SetChecked(DB.useDragonPortraits and 1 or nil)
+    RefreshColorControls()
     RefreshPartyLayoutControls()
     RefreshAdjustmentControls()
     RefreshRangeControls()
@@ -1659,14 +1913,18 @@ local function ApplyConfig()
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
     DB.locked = configControls.locked:GetChecked() and true or false
     DB.highlightAggro = configControls.highlightAggro:GetChecked() and true or false
+    if configControls.aggroBorderEdit then DB.aggroBorderIntensity = ClampAggroBorderIntensity(configControls.aggroBorderEdit:GetText()) end
     DB.displayCombatIcon = configControls.displayCombatIcon:GetChecked() and true or false
     DB.fadePartyOutOfRange = configControls.fadePartyOutOfRange:GetChecked() and true or false
     DB.fadeTargetOutOfRange = configControls.fadeTargetOutOfRange:GetChecked() and true or false
     DB.showPlayerCastBar = configControls.showPlayerCastBar:GetChecked() and true or false
     DB.showTargetCastBar = configControls.showTargetCastBar:GetChecked() and true or false
     DB.showTargetTargetCastBar = configControls.showTargetTargetCastBar:GetChecked() and true or false
+    DB.useClassColorNames = configControls.useClassColorNames:GetChecked() and true or false
+    DB.useDragonPortraits = configControls.useDragonPortraits:GetChecked() and true or false
     if DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange then RebuildRangeSpellCache() end
 
+    ApplyAllAggroBorderGeometry()
     ApplyFrameActivation()
     UpdateAllCastBars()
     RefreshConfig()
@@ -1745,6 +2003,7 @@ local function ResetDefaults()
         return
     end
     CopyDefaults(true)
+    ApplyAllAggroBorderGeometry()
     for i = 1, #UF.baseOrder do RestorePosition(UF.baseOrder[i]) end
     RestorePartyGroupPosition()
     ApplyFrameActivation()
@@ -1756,7 +2015,7 @@ local function CreateConfigFrame()
     if configFrame then return end
 
     configFrame = CreateFrame("Frame", "DMLUIUnitFramesConfigFrame", UIParent)
-    configFrame:SetWidth(560)
+    configFrame:SetWidth(850)
     configFrame:SetHeight(810)
     configFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     configFrame:SetFrameStrata("DIALOG")
@@ -1780,6 +2039,7 @@ local function CreateConfigFrame()
     local close = CreateFrame("Button", nil, configFrame, "UIPanelCloseButton")
     close:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -5, -5)
 
+    -- Column 1: replacement switches, global behavior, and frame scaling.
     local section1 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     section1:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -58)
     section1:SetText("Frame replacements")
@@ -1795,6 +2055,121 @@ local function CreateConfigFrame()
     showPartyPets:SetScript("OnClick", RefreshPartyControlEnableState)
     movePartyAsOne:SetScript("OnClick", RefreshPartyControlEnableState)
 
+    local section4 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    section4:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -334)
+    section4:SetText("Frame / size adjustment")
+    local unitLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    unitLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -366)
+    unitLabel:SetText("Frame:")
+    local unitDropDown = CreateFrame("Frame", "DMLUIUnitFramesAdjustmentDropDown", configFrame, "UIDropDownMenuTemplate")
+    unitDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 84, -349)
+    UIDropDownMenu_SetWidth(unitDropDown, 175)
+    UIDropDownMenu_Initialize(unitDropDown, function()
+        for j = 1, #UF.adjustmentOrder do
+            local key = UF.adjustmentOrder[j]
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = UF.adjustmentLabels[key] or key
+            info.value = key
+            info.checked = (adjustmentSelection == key)
+            info.func = function(button)
+                adjustmentSelection = button.value or key
+                RefreshAdjustmentControls()
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+    configControls.adjustmentUnit = unitDropDown
+
+    local scaleLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    scaleLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -415)
+    scaleLabel:SetText("Frame scale:")
+    local slider = CreateFrame("Slider", "DMLUIUnitFramesFrameScaleSlider", configFrame, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 123, -407)
+    slider:SetWidth(145)
+    slider:SetHeight(16)
+    slider:SetMinMaxValues(0, UF.FRAME_SCALE_SLIDER_MAX)
+    slider:SetValueStep(1)
+    _G[slider:GetName() .. "Low"]:SetText("0.50")
+    _G[slider:GetName() .. "High"]:SetText("2.00")
+    _G[slider:GetName() .. "Text"]:SetText("Unit frame size")
+    slider:SetScript("OnValueChanged", function(_, value)
+        if adjustmentRefreshing then return end
+        SetSelectedFrameScale(SliderValueToScale(value))
+    end)
+    configControls.frameScaleSlider = slider
+
+    local valueLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    valueLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 83, -460)
+    valueLabel:SetText("Scale value:")
+    local scaleEdit = CreateFrame("EditBox", "DMLUIUnitFramesFrameScaleEdit", configFrame, "InputBoxTemplate")
+    scaleEdit:SetWidth(72)
+    scaleEdit:SetHeight(22)
+    scaleEdit:SetPoint("LEFT", valueLabel, "RIGHT", 8, 0)
+    scaleEdit:SetAutoFocus(false)
+    scaleEdit:SetNumeric(false)
+    scaleEdit:SetMaxLetters(8)
+    local function CommitScale(self)
+        local value = tonumber(self:GetText())
+        if value then SetSelectedFrameScale(value) else RefreshAdjustmentControls() end
+        self:ClearFocus()
+    end
+    scaleEdit:SetScript("OnEnterPressed", CommitScale)
+    scaleEdit:SetScript("OnEditFocusLost", function(self)
+        if adjustmentRefreshing then return end
+        local value = tonumber(self:GetText())
+        if value then SetSelectedFrameScale(value) else RefreshAdjustmentControls() end
+    end)
+    scaleEdit:SetScript("OnEscapePressed", function(self) RefreshAdjustmentControls(); self:ClearFocus() end)
+    configControls.frameScaleEdit = scaleEdit
+
+    local behaviorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    behaviorSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -505)
+    behaviorSection:SetText("Behavior")
+    CreateCheckField(configFrame, "showTargetTarget", "Show target's target", 40, -525)
+    CreateCheckField(configFrame, "highlightAggro", "Highlight unit frame aggro", 40, -555)
+
+    local aggroLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    aggroLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -592)
+    aggroLabel:SetText("Aggro border intensity:")
+    local aggroSlider = CreateFrame("Slider", "DMLUIUnitFramesAggroBorderSlider", configFrame, "OptionsSliderTemplate")
+    aggroSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 45, -614)
+    aggroSlider:SetWidth(150)
+    aggroSlider:SetHeight(16)
+    aggroSlider:SetMinMaxValues(UF.AGGRO_BORDER_MIN, UF.AGGRO_BORDER_MAX)
+    aggroSlider:SetValueStep(1)
+    _G[aggroSlider:GetName() .. "Low"]:SetText(tostring(UF.AGGRO_BORDER_MIN))
+    _G[aggroSlider:GetName() .. "High"]:SetText(tostring(UF.AGGRO_BORDER_MAX))
+    _G[aggroSlider:GetName() .. "Text"]:SetText("Border width / glow")
+    local aggroEdit = CreateFrame("EditBox", "DMLUIUnitFramesAggroBorderEdit", configFrame, "InputBoxTemplate")
+    aggroEdit:SetWidth(42)
+    aggroEdit:SetHeight(20)
+    aggroEdit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 205, -610)
+    aggroEdit:SetAutoFocus(false)
+    aggroEdit:SetNumeric(true)
+    aggroEdit:SetMaxLetters(1)
+    local function SetAggroIntensity(value)
+        if aggroControlsRefreshing then return end
+        value = ClampAggroBorderIntensity(value)
+        DB.aggroBorderIntensity = value
+        aggroControlsRefreshing = true
+        aggroSlider:SetValue(value)
+        aggroEdit:SetText(tostring(value))
+        aggroControlsRefreshing = false
+        ApplyAllAggroBorderGeometry()
+        UpdateDynamicStates()
+    end
+    aggroSlider:SetScript("OnValueChanged", function(_, value) SetAggroIntensity(value) end)
+    aggroEdit:SetScript("OnEnterPressed", function(self) SetAggroIntensity(self:GetText()); self:ClearFocus() end)
+    aggroEdit:SetScript("OnEditFocusLost", function(self) if not aggroControlsRefreshing then SetAggroIntensity(self:GetText()) end end)
+    aggroEdit:SetScript("OnEscapePressed", function(self) self:SetText(tostring(DB.aggroBorderIntensity)); self:ClearFocus() end)
+    configControls.aggroBorderSlider = aggroSlider
+    configControls.aggroBorderEdit = aggroEdit
+
+    CreateCheckField(configFrame, "displayCombatIcon", "Display combat icon", 40, -660)
+    CreateCheckField(configFrame, "useClassColorNames", "Use class color as name", 40, -690)
+    CreateCheckField(configFrame, "useDragonPortraits", "Use dragon portraits", 40, -720)
+
+    -- Column 2: display and party placement.
     local section2 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     section2:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -58)
     section2:SetText("Display")
@@ -1875,102 +2250,95 @@ local function CreateConfigFrame()
     spacingEdit:SetScript("OnEscapePressed", function(self) RefreshPartyLayoutControls(); self:ClearFocus() end)
     configControls.partySpacingEdit = spacingEdit
 
-    local section4 = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    section4:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -344)
-    section4:SetText("Frame / size adjustment")
-    local unitLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    unitLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -376)
-    unitLabel:SetText("Frame:")
-    local unitDropDown = CreateFrame("Frame", "DMLUIUnitFramesAdjustmentDropDown", configFrame, "UIDropDownMenuTemplate")
-    unitDropDown:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 84, -359)
-    UIDropDownMenu_SetWidth(unitDropDown, 185)
-    UIDropDownMenu_Initialize(unitDropDown, function()
-        for j = 1, #UF.adjustmentOrder do
-            local key = UF.adjustmentOrder[j]
-            local info = UIDropDownMenu_CreateInfo()
-            info.text = UF.adjustmentLabels[key] or key
-            info.value = key
-            info.checked = (adjustmentSelection == key)
-            info.func = function(button)
-                adjustmentSelection = button.value or key
-                RefreshAdjustmentControls()
+    local castSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 304, -500)
+    castSection:SetText("Attached cast bars")
+
+    local function CreateCastBarRow(controlKey, labelText, y, dbPositionKey)
+        local check = CreateCheckField(configFrame, controlKey, labelText, 310, y)
+        check:SetScript("OnClick", RefreshCastBarControlEnableState)
+        local dd = CreateFrame("Frame", "DMLUIUnitFrames" .. controlKey .. "PositionDropDown", configFrame, "UIDropDownMenuTemplate")
+        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 455, y + 17)
+        UIDropDownMenu_SetWidth(dd, 78)
+        UIDropDownMenu_Initialize(dd, function()
+            local options = { { value = "ABOVE", text = "Above" }, { value = "BELOW", text = "Below" } }
+            for j = 1, #options do
+                local option = options[j]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = option.text
+                info.value = option.value
+                info.checked = (DB[dbPositionKey] == option.value)
+                info.func = function(button)
+                    DB[dbPositionKey] = button.value or option.value
+                    RefreshCastBarControls()
+                    UpdateAllCastBars()
+                end
+                UIDropDownMenu_AddButton(info)
             end
-            UIDropDownMenu_AddButton(info)
-        end
-    end)
-    configControls.adjustmentUnit = unitDropDown
-
-    local scaleLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    scaleLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -425)
-    scaleLabel:SetText("Frame scale:")
-    local slider = CreateFrame("Slider", "DMLUIUnitFramesFrameScaleSlider", configFrame, "OptionsSliderTemplate")
-    slider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 123, -417)
-    slider:SetWidth(155)
-    slider:SetHeight(16)
-    slider:SetMinMaxValues(0, UF.FRAME_SCALE_SLIDER_MAX)
-    slider:SetValueStep(1)
-    _G[slider:GetName() .. "Low"]:SetText("0.50")
-    _G[slider:GetName() .. "High"]:SetText("2.00")
-    _G[slider:GetName() .. "Text"]:SetText("Unit frame size")
-    slider:SetScript("OnValueChanged", function(_, value)
-        if adjustmentRefreshing then return end
-        SetSelectedFrameScale(SliderValueToScale(value))
-    end)
-    configControls.frameScaleSlider = slider
-
-    local valueLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    valueLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 93, -470)
-    valueLabel:SetText("Scale value:")
-    local scaleEdit = CreateFrame("EditBox", "DMLUIUnitFramesFrameScaleEdit", configFrame, "InputBoxTemplate")
-    scaleEdit:SetWidth(80)
-    scaleEdit:SetHeight(22)
-    scaleEdit:SetPoint("LEFT", valueLabel, "RIGHT", 8, 0)
-    scaleEdit:SetAutoFocus(false)
-    scaleEdit:SetNumeric(false)
-    scaleEdit:SetMaxLetters(8)
-    local function CommitScale(self)
-        local value = tonumber(self:GetText())
-        if value then SetSelectedFrameScale(value) else RefreshAdjustmentControls() end
-        self:ClearFocus()
+        end)
+        dd.dmlIsDropDown = true
+        configControls[dbPositionKey] = dd
+        return check, dd
     end
-    scaleEdit:SetScript("OnEnterPressed", CommitScale)
-    scaleEdit:SetScript("OnEditFocusLost", function(self)
-        if adjustmentRefreshing then return end
-        local value = tonumber(self:GetText())
-        if value then SetSelectedFrameScale(value) else RefreshAdjustmentControls() end
-    end)
-    scaleEdit:SetScript("OnEscapePressed", function(self) RefreshAdjustmentControls(); self:ClearFocus() end)
-    configControls.frameScaleEdit = scaleEdit
 
-    local behaviorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    behaviorSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -510)
-    behaviorSection:SetText("Behavior")
-    CreateCheckField(configFrame, "showTargetTarget", "Show target's target", 40, -530)
-    CreateCheckField(configFrame, "highlightAggro", "Highlight unit frame aggro", 40, -560)
-    CreateCheckField(configFrame, "displayCombatIcon", "Display combat icon", 40, -590)
+    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -525, "playerCastBarPosition")
+    CreateCastBarRow("showTargetCastBar", "Target cast bar", -555, "targetCastBarPosition")
+    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -585, "targetTargetCastBarPosition")
+
+    -- Column 3: colors and range fading.
+    local colorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    colorSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 574, -58)
+    colorSection:SetText("Colors")
+
+    local function CreateColorRow(key, labelText, y)
+        local label = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 580, y)
+        label:SetText(labelText)
+        local swatch = CreateFrame("Button", nil, configFrame)
+        swatch:SetWidth(28)
+        swatch:SetHeight(20)
+        swatch:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 760, y + 4)
+        swatch:SetBackdrop({
+            bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 8, edgeSize = 8,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        swatch:SetBackdropBorderColor(0.8, 0.8, 0.8, 1)
+        swatch:SetScript("OnClick", function() OpenColorPicker(key) end)
+        configControls["color_" .. key] = swatch
+        return swatch
+    end
+
+    CreateColorRow("background", "Frame background", -82)
+    CreateColorRow("health", "Health bar", -116)
+    CreateColorRow("mana", "Mana", -150)
+    CreateColorRow("rage", "Rage", -184)
+    CreateColorRow("energy", "Energy", -218)
+    CreateColorRow("runic", "Runic power", -252)
 
     local rangeSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    rangeSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 294, -510)
+    rangeSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 574, -305)
     rangeSection:SetText("Range fading")
 
-    local fadePartyCheck = CreateCheckField(configFrame, "fadePartyOutOfRange", "Fade party frames when out of range", 300, -530)
+    local fadePartyCheck = CreateCheckField(configFrame, "fadePartyOutOfRange", "Fade party frames when out of range", 580, -325)
     fadePartyCheck:SetScript("OnClick", RefreshRangeControlEnableState)
-    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 300, -625)
+    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 580, -485)
     fadeTargetCheck:SetScript("OnClick", RefreshRangeControlEnableState)
 
     local function CreateSpellRangeRow(prefix, kind, y, spellKey, fadeKey)
         local spellLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        spellLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, y)
+        spellLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 590, y)
         spellLabel:SetText("Spell:")
 
         local icon = configFrame:CreateTexture(nil, "ARTWORK")
         icon:SetWidth(18)
         icon:SetHeight(18)
-        icon:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 350, y + 5)
+        icon:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 630, y + 5)
         icon:Hide()
 
         local dd = CreateFrame("Frame", "DMLUIUnitFrames" .. prefix .. "RangeDropDown", configFrame, "UIDropDownMenuTemplate")
-        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 360, y + 19)
+        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 640, y + 19)
         UIDropDownMenu_SetWidth(dd, 155)
         UIDropDownMenu_Initialize(dd, function()
             local list = rangeSpellLists[kind] or {}
@@ -2001,13 +2369,13 @@ local function CreateConfigFrame()
         dd.dmlSelectedIcon = icon
 
         local fadeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        fadeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, y - 31)
+        fadeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 590, y - 31)
         fadeLabel:SetText("Fade to:")
 
         local edit = CreateFrame("EditBox", "DMLUIUnitFrames" .. prefix .. "FadeEdit", configFrame, "InputBoxTemplate")
         edit:SetWidth(42)
         edit:SetHeight(20)
-        edit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 365, y - 27)
+        edit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 645, y - 27)
         edit:SetAutoFocus(false)
         edit:SetNumeric(true)
         edit:SetMaxLetters(2)
@@ -2035,48 +2403,13 @@ local function CreateConfigFrame()
         return dd, edit
     end
 
-    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateSpellRangeRow("Party", "friend", -562, "partyRangeSpell", "partyFadePercent")
-    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateSpellRangeRow("Target", "harm", -657, "targetRangeSpell", "targetFadePercent")
-
-    local castSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    castSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -630)
-    castSection:SetText("Cast bars")
-
-    local function CreateCastBarRow(controlKey, labelText, y, dbPositionKey)
-        local check = CreateCheckField(configFrame, controlKey, labelText, 40, y)
-        check:SetScript("OnClick", RefreshCastBarControlEnableState)
-        local dd = CreateFrame("Frame", "DMLUIUnitFrames" .. controlKey .. "PositionDropDown", configFrame, "UIDropDownMenuTemplate")
-        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 190, y + 17)
-        UIDropDownMenu_SetWidth(dd, 82)
-        UIDropDownMenu_Initialize(dd, function()
-            local options = { { value = "ABOVE", text = "Above" }, { value = "BELOW", text = "Below" } }
-            for j = 1, #options do
-                local option = options[j]
-                local info = UIDropDownMenu_CreateInfo()
-                info.text = option.text
-                info.value = option.value
-                info.checked = (DB[dbPositionKey] == option.value)
-                info.func = function(button)
-                    DB[dbPositionKey] = button.value or option.value
-                    RefreshCastBarControls()
-                    UpdateAllCastBars()
-                end
-                UIDropDownMenu_AddButton(info)
-            end
-        end)
-        dd.dmlIsDropDown = true
-        configControls[dbPositionKey] = dd
-        return check, dd
-    end
-
-    CreateCastBarRow("showPlayerCastBar", "Player cast bar", -650, "playerCastBarPosition")
-    CreateCastBarRow("showTargetCastBar", "Target cast bar", -680, "targetCastBarPosition")
-    CreateCastBarRow("showTargetTargetCastBar", "Target's target cast bar", -710, "targetTargetCastBarPosition")
+    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateSpellRangeRow("Party", "friend", -357, "partyRangeSpell", "partyFadePercent")
+    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateSpellRangeRow("Target", "harm", -517, "targetRangeSpell", "targetFadePercent")
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
     apply:SetWidth(75)
     apply:SetHeight(24)
-    apply:SetPoint("BOTTOMLEFT", configFrame, "BOTTOMLEFT", 28, 28)
+    apply:SetPoint("BOTTOMLEFT", configFrame, "BOTTOMLEFT", 174, 28)
     apply:SetText("Apply")
     apply:SetScript("OnClick", ApplyConfig)
 
@@ -2110,6 +2443,11 @@ local function CreateConfigFrame()
 
     table.insert(UISpecialFrames, "DMLUIUnitFramesConfigFrame")
     configFrame:Hide()
+end
+
+function UF:SetExternalPlayerCastBarActive(active)
+    UF.externalPlayerCastBarActive = active and true or false
+    if initialized then UpdateCastBar("player") end
 end
 
 function UF:OpenConfig()

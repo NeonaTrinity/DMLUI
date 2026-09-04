@@ -80,7 +80,7 @@ local function CreateLauncher()
         return
     end
 
-    launcher = CreateBackdropFrame("DMLUILauncherFrame", "DMLUI", 330, 290)
+    launcher = CreateBackdropFrame("DMLUILauncherFrame", "DMLUI", 330, 330)
     UI.launcherFrame = launcher
 
     local subtitle = launcher:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -90,6 +90,7 @@ local function CreateLauncher()
     local entries = {
         { key = "ActionBars", label = "Action Bars" },
         { key = "UnitFrames", label = "Unit Frames" },
+        { key = "CastBars", label = "Cast Bars" },
         { key = "Profiles", label = "Profiles" },
         { key = "Advanced", label = "Advanced" },
         { key = "BigBag", label = "DML BigBag" }
