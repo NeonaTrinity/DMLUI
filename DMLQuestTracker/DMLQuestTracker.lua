@@ -5,7 +5,7 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.109"
+QT.VERSION = "2.0.110"
 QT.WIDTH = 310
 QT.HEADER_HEIGHT = 24
 QT.QUEST_MIN_HEIGHT = 18
@@ -15,6 +15,7 @@ QT.OBJECTIVE_GAP = 1
 QT.OBJECTIVE_INDENT = 22
 QT.BOTTOM_PADDING = 8
 QT.ANCHOR_HEIGHT = 18
+QT.ANCHOR_WIDTH = 155
 QT.ANCHOR_GAP = 3
 QT.SCALE_MIN = 0.50
 QT.SCALE_MAX = 2.00
@@ -461,9 +462,9 @@ local function CreateTrackerFrames()
     emptyText:SetText("No tracked quests.")
 
     anchor = CreateFrame("Frame", "DMLUIQuestTrackerAnchor", container)
-    anchor:SetWidth(QT.WIDTH)
+    anchor:SetWidth(QT.ANCHOR_WIDTH)
     anchor:SetHeight(QT.ANCHOR_HEIGHT)
-    anchor:SetPoint("BOTTOMLEFT", tracker, "TOPLEFT", 0, QT.ANCHOR_GAP)
+    anchor:SetPoint("BOTTOM", tracker, "TOP", 0, QT.ANCHOR_GAP)
     anchor:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -479,7 +480,7 @@ local function CreateTrackerFrames()
 
     local anchorText = anchor:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     anchorText:SetPoint("CENTER", anchor, "CENTER", 0, 0)
-    anchorText:SetText("DML Quest Tracker - drag to move")
+    anchorText:SetText("DML Quest Tracker - drag")
 
     anchor:SetScript("OnDragStart", function()
         if not DB or DB.locked or not DB.showAnchors then return end
