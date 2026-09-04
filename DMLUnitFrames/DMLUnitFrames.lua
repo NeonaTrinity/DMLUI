@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.94"
+UF.VERSION = "2.0.95"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -25,6 +25,11 @@ UF.FRAME_SCALE_MAX = 2.00
 UF.FRAME_SCALE_SLIDER_MAX = 100
 UF.PARTY_SPACING_MIN = 0
 UF.PARTY_SPACING_MAX = 150
+UF.FADE_PERCENT_MIN = 10
+UF.FADE_PERCENT_MAX = 90
+UF.DYNAMIC_UPDATE_INTERVAL = 0.20
+UF.RANGE_OPTIONS = { 15, 25, 30, 35, 40 }
+UF.DYNAMIC_MEMBER_KEYS = { "player", "party1", "party2", "party3", "party4" }
 
 local DB
 local configFrame
@@ -33,6 +38,10 @@ local initialized = false
 local adjustmentSelection = "player"
 local adjustmentRefreshing = false
 local partyLayoutRefreshing = false
+local rangeControlsRefreshing = false
+local dynamicElapsed = 0
+local rangeCacheDirty = false
+local rangeCacheElapsed = 0
 local PRINT_PREFIX = "|cff66ff99DMLUI Unit Frames|r: "
 
 UF.definitions = {
@@ -98,12 +107,13 @@ UF.partyGroupMover = nil
 UF.partyGroupHandle = nil
 
 local defaults = {
-    version = 3,
+    version = 4,
     usePlayerFrame = false,
     useTargetFrame = false,
     useFocusFrame = false,
     usePetFrame = false,
     useTargetTargetFrame = false,
+    showTargetTarget = true,
     usePartyFrames = false,
     showPartyPets = true,
     movePartyAsOne = true,
@@ -116,6 +126,14 @@ local defaults = {
     showClass = true,
     showAnchors = true,
     locked = false,
+    highlightAggro = false,
+    displayCombatIcon = false,
+    fadePartyOutOfRange = false,
+    partyRange = 40,
+    partyFadePercent = 35,
+    fadeTargetOutOfRange = false,
+    targetRange = 40,
+    targetFadePercent = 35,
     positions = {},
     frameScales = {},
     partyGroupPosition = nil,
@@ -146,12 +164,36 @@ local function ClampPartySpacing(value)
     return math.floor(value + 0.5)
 end
 
+local function ClampFadePercent(value)
+    value = tonumber(value) or 35
+    if value < UF.FADE_PERCENT_MIN then value = UF.FADE_PERCENT_MIN end
+    if value > UF.FADE_PERCENT_MAX then value = UF.FADE_PERCENT_MAX end
+    return math.floor(value + 0.5)
+end
+
+local function ClampRange(value)
+    value = tonumber(value) or 40
+    local best = UF.RANGE_OPTIONS[1]
+    local bestDiff = math.abs(value - best)
+    for idx = 2, #UF.RANGE_OPTIONS do
+        local candidate = UF.RANGE_OPTIONS[idx]
+        local diff = math.abs(value - candidate)
+        if diff < bestDiff then
+            best = candidate
+            bestDiff = diff
+        end
+    end
+    return best
+end
+
 local function CopyDefaults(reset)
     if reset or type(DMLUnitFramesDB) ~= "table" then
         DMLUnitFramesDB = {}
     end
     DB = DMLUnitFramesDB
 
+    local previousVersion = tonumber(DB.version) or 0
+    local hadShowTargetTarget = DB.showTargetTarget ~= nil
     local key, value
     for key, value in pairs(defaults) do
         if reset or DB[key] == nil then
@@ -169,6 +211,16 @@ local function CopyDefaults(reset)
     DB.useFocusFrame = DB.useFocusFrame and true or false
     DB.usePetFrame = DB.usePetFrame and true or false
     DB.useTargetTargetFrame = DB.useTargetTargetFrame and true or false
+    -- Before 2.0.95, the target-of-target replacement checkbox also controlled
+    -- whether the DML target-of-target frame existed. Preserve that visible
+    -- state once, then keep display and Blizzard override independent.
+    if previousVersion < 4 and not hadShowTargetTarget then
+        -- Before this setting existed, Blizzard or DML supplied a visible ToT
+        -- by default. Preserve that behavior and make this the new master toggle.
+        DB.showTargetTarget = true
+    else
+        DB.showTargetTarget = DB.showTargetTarget and true or false
+    end
     DB.usePartyFrames = DB.usePartyFrames and true or false
     DB.showPartyPets = DB.showPartyPets ~= false
     DB.movePartyAsOne = DB.movePartyAsOne ~= false
@@ -181,6 +233,14 @@ local function CopyDefaults(reset)
     DB.showClass = DB.showClass ~= false
     DB.showAnchors = DB.showAnchors ~= false
     DB.locked = DB.locked and true or false
+    DB.highlightAggro = DB.highlightAggro and true or false
+    DB.displayCombatIcon = DB.displayCombatIcon and true or false
+    DB.fadePartyOutOfRange = DB.fadePartyOutOfRange and true or false
+    DB.partyRange = ClampRange(DB.partyRange)
+    DB.partyFadePercent = ClampFadePercent(DB.partyFadePercent)
+    DB.fadeTargetOutOfRange = DB.fadeTargetOutOfRange and true or false
+    DB.targetRange = ClampRange(DB.targetRange)
+    DB.targetFadePercent = ClampFadePercent(DB.targetFadePercent)
 
     if type(DB.positions) ~= "table" then DB.positions = {} end
     if type(DB.frameScales) ~= "table" then DB.frameScales = {} end
@@ -212,6 +272,9 @@ end
 local function IsDefinitionEnabled(key, definition)
     definition = definition or GetDefinition(key)
     if not definition or not DB then return false end
+    if key == "targettarget" then
+        return DB.showTargetTarget and DB.useTargetTargetFrame and true or false
+    end
     if definition.partyPet then
         return DB.usePartyFrames and DB.showPartyPets
     end
@@ -464,7 +527,13 @@ local function ApplyBlizzardFrameVisibility()
     for i = 1, #UF.baseOrder do
         local key = UF.baseOrder[i]
         local definition = GetDefinition(key)
-        SetBlizzardFrameHidden(definition.blizzard, IsDefinitionEnabled(key, definition))
+        local hideStock
+        if key == "targettarget" then
+            hideStock = (not DB.showTargetTarget) or (DB.useTargetTargetFrame and true or false)
+        else
+            hideStock = IsDefinitionEnabled(key, definition)
+        end
+        SetBlizzardFrameHidden(definition.blizzard, hideStock)
     end
 
     for i = 1, 4 do
@@ -491,6 +560,187 @@ local function SetPowerColor(statusBar, unit)
         statusBar:SetStatusBarColor(color.r or 0, color.g or 0.4, color.b or 1)
     else
         statusBar:SetStatusBarColor(0, 0.45, 1)
+    end
+end
+
+local rangeSpellSlots = { friend = {}, harm = {} }
+
+local function RebuildRangeSpellCache()
+    rangeSpellSlots = { friend = {}, harm = {} }
+    if not GetNumSpellTabs or not GetSpellTabInfo or not IsSpellInRange then return end
+
+    local candidates = { friend = {}, harm = {} }
+    local tabs = tonumber(GetNumSpellTabs()) or 0
+    for tab = 1, tabs do
+        local _, _, offset, numSpells = GetSpellTabInfo(tab)
+        offset = tonumber(offset) or 0
+        numSpells = tonumber(numSpells) or 0
+        for slot = offset + 1, offset + numSpells do
+            local name = GetSpellName and GetSpellName(slot, BOOKTYPE_SPELL) or nil
+            local a, b, c, d, e, f, g, h, i9
+            if GetSpellInfo and name then
+                a, b, c, d, e, f, g, h, i9 = GetSpellInfo(name)
+            end
+            local minRange, maxRange
+            if i9 ~= nil then
+                minRange, maxRange = tonumber(h) or 0, tonumber(i9) or 0
+            else
+                -- Compatibility with clients exposing the shorter GetSpellInfo signature.
+                minRange, maxRange = tonumber(e) or 0, tonumber(f) or 0
+            end
+            if maxRange > 0 and minRange <= 0 then
+                if IsHelpfulSpell and IsHelpfulSpell(slot, BOOKTYPE_SPELL) then
+                    table.insert(candidates.friend, { slot = slot, range = maxRange })
+                end
+                if IsHarmfulSpell and IsHarmfulSpell(slot, BOOKTYPE_SPELL) then
+                    table.insert(candidates.harm, { slot = slot, range = maxRange })
+                end
+            end
+        end
+    end
+
+    local function choose(list, desired)
+        local best, bestDiff
+        for idx = 1, #list do
+            local entry = list[idx]
+            local diff = math.abs(entry.range - desired)
+            if diff <= 5 and (not best or diff < bestDiff or (diff == bestDiff and entry.range < best.range)) then
+                best = entry
+                bestDiff = diff
+            end
+        end
+        return best and best.slot or nil
+    end
+
+    for idx = 1, #UF.RANGE_OPTIONS do
+        local desired = UF.RANGE_OPTIONS[idx]
+        rangeSpellSlots.friend[desired] = choose(candidates.friend, desired)
+        rangeSpellSlots.harm[desired] = choose(candidates.harm, desired)
+    end
+end
+
+local function SpellRangeCheck(kind, yards, unit)
+    local slots = rangeSpellSlots[kind]
+    local slot = slots and slots[yards]
+    if not slot or not IsSpellInRange then return nil end
+    local result = IsSpellInRange(slot, BOOKTYPE_SPELL, unit)
+    if result == 1 or result == true then return true end
+    if result == 0 or result == false then return false end
+    return nil
+end
+
+local function NativeRangeCheck(yards, unit, kind)
+    if yards >= 35 and kind == "friend" and UnitInRange then
+        local result = UnitInRange(unit)
+        if result == 1 or result == true then return true end
+        if result == 0 or result == false then return false end
+        -- On 3.3.5 UnitInRange commonly returns nil when beyond its range. If
+        -- the unit is otherwise visible/existing, keep falling through so a
+        -- spell/interact checker can still provide a useful answer.
+    end
+    if CheckInteractDistance then
+        local index = (yards <= 15) and 2 or 4
+        local result = CheckInteractDistance(unit, index)
+        if result == 1 or result == true then return true end
+        if yards <= 30 then return false end
+    end
+    return nil
+end
+
+local function IsUnitWithinConfiguredRange(unit, yards, kind)
+    if not UnitExists(unit) then return true end
+    if UnitIsUnit and UnitIsUnit(unit, "player") then return true end
+    if UnitIsVisible and not UnitIsVisible(unit) then return false end
+
+    yards = ClampRange(yards)
+    local spellResult = SpellRangeCheck(kind, yards, unit)
+    if spellResult ~= nil then return spellResult end
+
+    local nativeResult = NativeRangeCheck(yards, unit, kind)
+    if nativeResult ~= nil then return nativeResult end
+
+    -- No trustworthy checker is available for this unit/class combination.
+    -- Prefer leaving the frame visible rather than falsely fading an in-range unit.
+    return true
+end
+
+local function HasUnitAggro(unit)
+    if not UnitExists(unit) then return false end
+    if UnitAffectingCombat and not UnitAffectingCombat(unit) then return false end
+    if UnitThreatSituation then
+        local status = UnitThreatSituation(unit)
+        if tonumber(status) and tonumber(status) >= 2 then return true end
+    end
+    -- Social pulls can report threat status 0 even while the unit is the mob's
+    -- actual target, so also recognize the current hostile target's target.
+    if UnitExists("target") and UnitCanAttack and UnitCanAttack("player", "target") and UnitIsUnit and UnitIsUnit("targettarget", unit) then
+        return true
+    end
+    return false
+end
+
+local function SetUnitAggroBorder(frame, highlighted)
+    if not frame or not frame.SetBackdropBorderColor then return end
+    if highlighted then
+        frame:SetBackdropBorderColor(1, 0.05, 0.05, 1)
+    else
+        frame:SetBackdropBorderColor(0.42, 0.42, 0.42, 1)
+    end
+end
+
+local function UpdateDynamicStates()
+    if not DB then return end
+
+    for idx = 1, #UF.DYNAMIC_MEMBER_KEYS do
+        local key = UF.DYNAMIC_MEMBER_KEYS[idx]
+        local frame = UF.frames[key]
+        local definition = GetDefinition(key)
+        if frame and definition then
+            local unit = definition.unit
+            local aggro = DB.highlightAggro and HasUnitAggro(unit) or false
+            SetUnitAggroBorder(frame, aggro)
+            if frame.combatIcon then
+                local inCombat = DB.displayCombatIcon and UnitExists(unit) and UnitAffectingCombat and UnitAffectingCombat(unit)
+                if inCombat then frame.combatIcon:Show() else frame.combatIcon:Hide() end
+            end
+        end
+    end
+
+    local partyAlpha = ClampFadePercent(DB.partyFadePercent) / 100
+    for idx = 1, 4 do
+        local key = "party" .. idx
+        local frame = UF.frames[key]
+        if frame then
+            local alpha = 1
+            if DB.fadePartyOutOfRange and UnitExists(key) and not IsUnitWithinConfiguredRange(key, DB.partyRange, "friend") then
+                alpha = partyAlpha
+            end
+            frame:SetAlpha(alpha)
+        end
+    end
+
+    local targetFrame = UF.frames.target
+    if targetFrame then
+        local alpha = 1
+        if UnitExists("target") then
+            local targetIsParty = false
+            if UnitIsUnit then
+                for idx = 1, 4 do
+                    if UnitExists("party" .. idx) and UnitIsUnit("target", "party" .. idx) then
+                        targetIsParty = true
+                        break
+                    end
+                end
+            end
+            if targetIsParty and DB.fadePartyOutOfRange then
+                if not IsUnitWithinConfiguredRange("target", DB.partyRange, "friend") then alpha = partyAlpha end
+            elseif DB.fadeTargetOutOfRange and UnitCanAttack and UnitCanAttack("player", "target") then
+                if not IsUnitWithinConfiguredRange("target", DB.targetRange, "harm") then
+                    alpha = ClampFadePercent(DB.targetFadePercent) / 100
+                end
+            end
+        end
+        targetFrame:SetAlpha(alpha)
     end
 end
 
@@ -663,6 +913,7 @@ local function ApplyFrameActivation()
 
     ApplyBlizzardFrameVisibility()
     UpdateAllFrames()
+    UpdateDynamicStates()
     return true
 end
 
@@ -808,6 +1059,17 @@ local function CreateUnitFrame(key)
     portrait:SetPoint("CENTER", portraitBorder, "CENTER", 0, 0)
     portrait:SetTexCoord(0.08, 0.92, 0.08, 0.92)
 
+    local combatIcon
+    if key == "player" or definition.partyMember then
+        combatIcon = frame:CreateTexture(nil, "OVERLAY")
+        combatIcon:SetWidth(isParty and 15 or 18)
+        combatIcon:SetHeight(isParty and 15 or 18)
+        combatIcon:SetTexture("Interface\\CharacterFrame\\UI-StateIcon")
+        combatIcon:SetTexCoord(0.58, 0.90, 0.08, 0.41)
+        combatIcon:SetPoint("TOPRIGHT", portraitBorder, "TOPRIGHT", 3, 3)
+        combatIcon:Hide()
+    end
+
     local nameText = frame:CreateFontString(nil, "OVERLAY", isParty and "GameFontNormalSmall" or "GameFontNormal")
     nameText:SetPoint("TOPLEFT", frame, "TOPLEFT", metrics.textX, metrics.nameY)
     nameText:SetWidth(metrics.barWidth - 30)
@@ -901,6 +1163,7 @@ local function CreateUnitFrame(key)
 
     frame.portrait = portrait
     frame.portraitBorder = portraitBorder
+    frame.combatIcon = combatIcon
     frame.nameText = nameText
     frame.levelText = levelText
     frame.classText = classText
@@ -1111,6 +1374,33 @@ local function RefreshPartyLayoutControls()
     RefreshPartyControlEnableState()
 end
 
+local function RefreshRangeControlEnableState()
+    if not configFrame then return end
+    local partyEnabled = configControls.fadePartyOutOfRange and configControls.fadePartyOutOfRange:GetChecked()
+    local targetEnabled = configControls.fadeTargetOutOfRange and configControls.fadeTargetOutOfRange:GetChecked()
+    SetWidgetEnabled(configControls.partyRangeDropDown, partyEnabled and true or false)
+    SetWidgetEnabled(configControls.partyFadeEdit, partyEnabled and true or false)
+    SetWidgetEnabled(configControls.targetRangeDropDown, targetEnabled and true or false)
+    SetWidgetEnabled(configControls.targetFadeEdit, targetEnabled and true or false)
+end
+
+local function RefreshRangeControls()
+    if not configFrame or not DB then return end
+    rangeControlsRefreshing = true
+    if configControls.partyRangeDropDown then
+        if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(configControls.partyRangeDropDown, DB.partyRange) end
+        if UIDropDownMenu_SetText then UIDropDownMenu_SetText(configControls.partyRangeDropDown, tostring(DB.partyRange) .. " yd") end
+    end
+    if configControls.targetRangeDropDown then
+        if UIDropDownMenu_SetSelectedValue then UIDropDownMenu_SetSelectedValue(configControls.targetRangeDropDown, DB.targetRange) end
+        if UIDropDownMenu_SetText then UIDropDownMenu_SetText(configControls.targetRangeDropDown, tostring(DB.targetRange) .. " yd") end
+    end
+    if configControls.partyFadeEdit then configControls.partyFadeEdit:SetText(tostring(DB.partyFadePercent)) end
+    if configControls.targetFadeEdit then configControls.targetFadeEdit:SetText(tostring(DB.targetFadePercent)) end
+    rangeControlsRefreshing = false
+    RefreshRangeControlEnableState()
+end
+
 local function RefreshConfig()
     if not configFrame then return end
     configControls.usePlayerFrame:SetChecked(DB.usePlayerFrame and 1 or nil)
@@ -1118,6 +1408,7 @@ local function RefreshConfig()
     configControls.useFocusFrame:SetChecked(DB.useFocusFrame and 1 or nil)
     configControls.usePetFrame:SetChecked(DB.usePetFrame and 1 or nil)
     configControls.useTargetTargetFrame:SetChecked(DB.useTargetTargetFrame and 1 or nil)
+    configControls.showTargetTarget:SetChecked(DB.showTargetTarget and 1 or nil)
     configControls.usePartyFrames:SetChecked(DB.usePartyFrames and 1 or nil)
     configControls.showPartyPets:SetChecked(DB.showPartyPets and 1 or nil)
     configControls.movePartyAsOne:SetChecked(DB.movePartyAsOne and 1 or nil)
@@ -1128,8 +1419,13 @@ local function RefreshConfig()
     configControls.showClass:SetChecked(DB.showClass and 1 or nil)
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
     configControls.locked:SetChecked(DB.locked and 1 or nil)
+    configControls.highlightAggro:SetChecked(DB.highlightAggro and 1 or nil)
+    configControls.displayCombatIcon:SetChecked(DB.displayCombatIcon and 1 or nil)
+    configControls.fadePartyOutOfRange:SetChecked(DB.fadePartyOutOfRange and 1 or nil)
+    configControls.fadeTargetOutOfRange:SetChecked(DB.fadeTargetOutOfRange and 1 or nil)
     RefreshPartyLayoutControls()
     RefreshAdjustmentControls()
+    RefreshRangeControls()
 end
 
 local function ApplyConfig()
@@ -1143,6 +1439,7 @@ local function ApplyConfig()
     DB.useFocusFrame = configControls.useFocusFrame:GetChecked() and true or false
     DB.usePetFrame = configControls.usePetFrame:GetChecked() and true or false
     DB.useTargetTargetFrame = configControls.useTargetTargetFrame:GetChecked() and true or false
+    DB.showTargetTarget = configControls.showTargetTarget:GetChecked() and true or false
     DB.usePartyFrames = configControls.usePartyFrames:GetChecked() and true or false
     DB.showPartyPets = configControls.showPartyPets:GetChecked() and true or false
     DB.movePartyAsOne = configControls.movePartyAsOne:GetChecked() and true or false
@@ -1153,6 +1450,11 @@ local function ApplyConfig()
     DB.showClass = configControls.showClass:GetChecked() and true or false
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
     DB.locked = configControls.locked:GetChecked() and true or false
+    DB.highlightAggro = configControls.highlightAggro:GetChecked() and true or false
+    DB.displayCombatIcon = configControls.displayCombatIcon:GetChecked() and true or false
+    DB.fadePartyOutOfRange = configControls.fadePartyOutOfRange:GetChecked() and true or false
+    DB.fadeTargetOutOfRange = configControls.fadeTargetOutOfRange:GetChecked() and true or false
+    if DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange then RebuildRangeSpellCache() end
 
     ApplyFrameActivation()
     RefreshConfig()
@@ -1273,7 +1575,7 @@ local function CreateConfigFrame()
     CreateCheckField(configFrame, "useTargetFrame", "Use DML target frame", 40, -108)
     CreateCheckField(configFrame, "useFocusFrame", "Use DML focus frame", 40, -138)
     CreateCheckField(configFrame, "usePetFrame", "Use DML pet frame", 40, -168)
-    CreateCheckField(configFrame, "useTargetTargetFrame", "Use DML target of target frame", 40, -198)
+    CreateCheckField(configFrame, "useTargetTargetFrame", "Override Blizzard target of target frame", 40, -198)
     local useParty = CreateCheckField(configFrame, "usePartyFrames", "Use DML party frames", 40, -228)
     local showPartyPets = CreateCheckField(configFrame, "showPartyPets", "Show party pets", 40, -258)
     local movePartyAsOne = CreateCheckField(configFrame, "movePartyAsOne", "Move party frames as one anchor", 40, -288)
@@ -1428,17 +1730,85 @@ local function CreateConfigFrame()
     scaleEdit:SetScript("OnEscapePressed", function(self) RefreshAdjustmentControls(); self:ClearFocus() end)
     configControls.frameScaleEdit = scaleEdit
 
-    local adjustmentNote = configFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    adjustmentNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -510)
-    adjustmentNote:SetWidth(470)
-    adjustmentNote:SetJustifyH("LEFT")
-    adjustmentNote:SetText("Frame scale is clamped to 0.50x-2.00x. All applies one size to every DML unit frame. Party Members share one scale and Party Pets share another in both grouped and freeform layouts. Party Group is position/spacing only.")
+    local behaviorSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    behaviorSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -510)
+    behaviorSection:SetText("Behavior")
+    CreateCheckField(configFrame, "showTargetTarget", "Show target's target", 40, -530)
+    CreateCheckField(configFrame, "highlightAggro", "Highlight unit frame aggro", 40, -560)
+    CreateCheckField(configFrame, "displayCombatIcon", "Display combat icon", 40, -590)
 
-    local note = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    note:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -558)
-    note:SetWidth(480)
-    note:SetJustifyH("LEFT")
-    note:SetText("Grouped party mode uses the large Party anchor and vertical spacing. Freeform mode ignores spacing and shows a small drag handle beside each party member and pet portrait. Both layouts are saved separately.")
+    local rangeSection = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    rangeSection:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 294, -510)
+    rangeSection:SetText("Range fading")
+
+    local fadePartyCheck = CreateCheckField(configFrame, "fadePartyOutOfRange", "Fade party frames when out of range", 300, -530)
+    fadePartyCheck:SetScript("OnClick", RefreshRangeControlEnableState)
+    local fadeTargetCheck = CreateCheckField(configFrame, "fadeTargetOutOfRange", "Fade enemy target if out of range", 300, -590)
+    fadeTargetCheck:SetScript("OnClick", RefreshRangeControlEnableState)
+
+    local function CreateRangeRow(prefix, y, rangeKey, fadeKey)
+        local rangeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        rangeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 310, y)
+        rangeLabel:SetText("Range:")
+
+        local dd = CreateFrame("Frame", "DMLUIUnitFrames" .. prefix .. "RangeDropDown", configFrame, "UIDropDownMenuTemplate")
+        dd:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 344, y + 17)
+        UIDropDownMenu_SetWidth(dd, 70)
+        UIDropDownMenu_Initialize(dd, function()
+            for r = 1, #UF.RANGE_OPTIONS do
+                local yards = UF.RANGE_OPTIONS[r]
+                local info = UIDropDownMenu_CreateInfo()
+                info.text = tostring(yards) .. " yd"
+                info.value = yards
+                info.checked = (DB[rangeKey] == yards)
+                info.func = function(button)
+                    DB[rangeKey] = ClampRange(button.value or yards)
+                    RefreshRangeControls()
+                    UpdateDynamicStates()
+                end
+                UIDropDownMenu_AddButton(info)
+            end
+        end)
+        dd.dmlIsDropDown = true
+        dd.dmlLabel = rangeLabel
+
+        local fadeLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        fadeLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 432, y)
+        fadeLabel:SetText("Fade to:")
+
+        local edit = CreateFrame("EditBox", "DMLUIUnitFrames" .. prefix .. "FadeEdit", configFrame, "InputBoxTemplate")
+        edit:SetWidth(42)
+        edit:SetHeight(20)
+        edit:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 478, y + 4)
+        edit:SetAutoFocus(false)
+        edit:SetNumeric(true)
+        edit:SetMaxLetters(2)
+        edit.dmlLabel = fadeLabel
+        local pct = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        pct:SetPoint("LEFT", edit, "RIGHT", 2, 0)
+        pct:SetText("%")
+
+        local function CommitFade(self)
+            local value = tonumber(self:GetText())
+            if value then DB[fadeKey] = ClampFadePercent(value) end
+            RefreshRangeControls()
+            UpdateDynamicStates()
+            self:ClearFocus()
+        end
+        edit:SetScript("OnEnterPressed", CommitFade)
+        edit:SetScript("OnEditFocusLost", function(self)
+            if rangeControlsRefreshing then return end
+            local value = tonumber(self:GetText())
+            if value then DB[fadeKey] = ClampFadePercent(value) end
+            RefreshRangeControls()
+            UpdateDynamicStates()
+        end)
+        edit:SetScript("OnEscapePressed", function(self) RefreshRangeControls(); self:ClearFocus() end)
+        return dd, edit
+    end
+
+    configControls.partyRangeDropDown, configControls.partyFadeEdit = CreateRangeRow("Party", -566, "partyRange", "partyFadePercent")
+    configControls.targetRangeDropDown, configControls.targetFadeEdit = CreateRangeRow("Target", -626, "targetRange", "targetFadePercent")
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
     apply:SetWidth(75)
@@ -1504,6 +1874,7 @@ end
 local function Initialize()
     if initialized then return end
     CopyDefaults(false)
+    RebuildRangeSpellCache()
     CreateAllFrames()
     CreateConfigFrame()
     ApplyFrameActivation()
@@ -1535,6 +1906,12 @@ eventFrame:RegisterEvent("UNIT_LEVEL")
 eventFrame:RegisterEvent("UNIT_NAME_UPDATE")
 eventFrame:RegisterEvent("UNIT_PORTRAIT_UPDATE")
 eventFrame:RegisterEvent("PLAYER_FLAGS_CHANGED")
+eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+eventFrame:RegisterEvent("UNIT_THREAT_SITUATION_UPDATE")
+eventFrame:RegisterEvent("UNIT_THREAT_LIST_UPDATE")
+eventFrame:RegisterEvent("SPELLS_CHANGED")
+eventFrame:RegisterEvent("PLAYER_TALENT_UPDATE")
 eventFrame:SetScript("OnEvent", function(_, event, arg1)
     if event == "ADDON_LOADED" then
         if arg1 == "DMLUnitFrames" then Initialize() end
@@ -1543,9 +1920,16 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
     if not initialized then return end
 
     if event == "PLAYER_ENTERING_WORLD" then
+        RebuildRangeSpellCache()
         UpdateAllFrames()
         ApplyBlizzardFrameVisibility()
         ApplyPartyLayout()
+        UpdateDynamicStates()
+    elseif event == "SPELLS_CHANGED" or event == "PLAYER_TALENT_UPDATE" then
+        rangeCacheDirty = true
+        rangeCacheElapsed = 0
+    elseif event == "UNIT_THREAT_SITUATION_UPDATE" or event == "UNIT_THREAT_LIST_UPDATE" or event == "PLAYER_REGEN_DISABLED" or event == "PLAYER_REGEN_ENABLED" then
+        UpdateDynamicStates()
     elseif event == "PLAYER_TARGET_CHANGED" then
         UpdateFrame("target")
         UpdateFrame("targettarget")
@@ -1588,4 +1972,23 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
     else
         UpdateAllFrames()
     end
+    UpdateDynamicStates()
+end)
+
+eventFrame:SetScript("OnUpdate", function(_, elapsed)
+    if not initialized or not DB then return end
+    elapsed = tonumber(elapsed) or 0
+    if rangeCacheDirty then
+        rangeCacheElapsed = rangeCacheElapsed + elapsed
+        if rangeCacheElapsed >= 0.50 then
+            rangeCacheDirty = false
+            rangeCacheElapsed = 0
+            RebuildRangeSpellCache()
+        end
+    end
+    if not (DB.highlightAggro or DB.displayCombatIcon or DB.fadePartyOutOfRange or DB.fadeTargetOutOfRange) then return end
+    dynamicElapsed = dynamicElapsed + elapsed
+    if dynamicElapsed < UF.DYNAMIC_UPDATE_INTERVAL then return end
+    dynamicElapsed = 0
+    UpdateDynamicStates()
 end)

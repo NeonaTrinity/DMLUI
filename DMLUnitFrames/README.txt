@@ -1,4 +1,4 @@
-DMLUI - Unit Frames 2.0.94
+DMLUI - Unit Frames 2.0.95
 
 Optional DMLUI module for WoW 3.3.5a.
 Install alongside DMLUI_Core. The Unit Frames button in the DMLUI launcher becomes active automatically.
@@ -12,7 +12,20 @@ Supported frames:
 - Party 1-4
 - Party pets 1-4
 
-Installing the module does not replace Blizzard frames automatically. Enable only the DML replacements you want.
+Target-of-target controls:
+- Show target's target is the master visibility switch.
+- Override Blizzard target of target frame determines whether the visible ToT uses DML instead of Blizzard's stock ToT.
+
+Behavior options:
+- Highlight unit frame aggro: red border on Player / Party member frames with aggro.
+- Display combat icon: crossed-swords icon on Player / Party member portrait corners while in combat.
+
+Range fading:
+- Party frame range: 15, 25, 30, 35, or 40 yd.
+- Party fade-to opacity: 10-90%.
+- A targeted party member also applies the party range/fade rule to the DML Target frame.
+- Enemy Target has its own independent range and fade-to opacity settings.
+- Range checks use known spell ranges first and stock 3.3.5 native fallbacks. No item metadata or item-based range library is queried.
 
 Party controls:
 - Use DML party frames
@@ -45,12 +58,9 @@ Frame / size adjustment selector:
 
 Unit-frame scaling:
 - 0.50x through 2.00x.
-- Numeric entry is clamped to the exact same 0.50x-2.00x range.
-- All applies one uniform scale to Player, Target, Target of Target, Focus, Pet, Party Members, and Party Pets.
-- If those categories currently use different sizes, All displays Mixed until a new value is chosen.
-- Scaling resizes the complete selected unit frame: portrait, bars, text, background/border, and clickable area.
-- Party Members share one complete-frame scale; Party Pets share another in both grouped and freeform modes.
-- Individual Party 1-4 and party-pet positions remain adjustable with their freeform drag handles, but they are not separate scale-selector entries.
+- Numeric entry is clamped to the exact same range.
+- Scaling resizes the complete selected unit frame.
+- Party Members share one complete-frame scale; Party Pets share another.
 
 Reset controls:
 - Reset Frame: resets the currently selected frame/category to its default position and frame scale where applicable.
