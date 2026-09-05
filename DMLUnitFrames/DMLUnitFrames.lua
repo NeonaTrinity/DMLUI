@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.123"
+UF.VERSION = "2.0.124"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -1722,7 +1722,7 @@ local function CreateUnitFrame(key)
     local classificationDragon = portraitOverlay:CreateTexture(nil, "OVERLAY")
     classificationDragon:SetWidth(metrics.portraitBorder * 1.74)
     classificationDragon:SetHeight(metrics.portraitBorder * 1.63)
-    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", -10, -4)
+    classificationDragon:SetPoint("CENTER", portraitBorder, "CENTER", -12, -4)
     classificationDragon:SetTexCoord(1.0, 0.57, 0.0, 0.78)
     classificationDragon:Hide()
 

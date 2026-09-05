@@ -1,4 +1,4 @@
-# DMLUI v2.0.123
+# DMLUI v2.0.124
 
 Modular UI addon for World of Warcraft 3.3.5a. Install DMLUI_Core plus any optional modules you want.
 
