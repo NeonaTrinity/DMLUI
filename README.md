@@ -1,4 +1,4 @@
-# DMLUI 2.0.117
+# DMLUI 2.0.122
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -7,10 +7,46 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUI_Core/` - shared minimap launcher and module framework (2.0.114).
 - `DMLCooldownBar/` - Action Bars module (unchanged from 2.0.91).
 - `DMLCooldownBar_J3Spells/` - optional J3Spells integration for Action Bars (unchanged from 2.0.91).
-- `DMLUnitFrames/` - Unit Frames module (2.0.114).
+- `DMLUnitFrames/` - Unit Frames module (2.0.120).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.106).
-- `DMLBuffs/` - optional attached/detached aura and cleanse-highlighting module (2.0.116).
-- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.117).
+- `DMLBuffs/` - optional attached/detached aura and cleanse-highlighting module (2.0.122).
+- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.118).
+
+
+
+
+## 2.0.122 highlights
+
+### DML Buffs
+- Added an **Attached aura spacing** slider from 0-40 px, default 3 px.
+- Spacing changes the gap between attached Player, Target, Target-of-Target, and Party aura groups and their DML unit frames.
+- Above and Below attachment modes both respect the setting.
+- Detached aura panels are unchanged.
+- The slider grays out when no compatible DML unit frame is active.
+
+## 2.0.120 highlights
+
+### DML Unit Frames
+- Nudged the mirrored rare/elite dragon portrait ornament 2 px farther left and 2 px farther down for improved portrait alignment.
+- Dragon size, crop, mirroring, and unit-frame scaling behavior are unchanged.
+
+
+## 2.0.119 highlights
+
+### DML Buffs
+- Added a **Highlight opacity** text box for decurse/cleanse highlighting, clamped to 0.05-1.00 with a default of 0.60.
+- Overlay mode uses the value as the full-frame tint opacity.
+- Border mode uses the same value for border opacity/brightness.
+- Added a **Border thickness** slider from 1-8 px (default 3), enabled only while Border highlight style is selected.
+- Existing Magic/Poison/Disease/Curse colors and newest-effect priority are unchanged.
+
+## 2.0.118 highlights
+
+### DML Quest Tracker
+- Added an independent **Quest tracker width** slider from 220-600 px, default 310 px.
+- Width changes the actual quest-title/objective wrap width without changing the overall tracker scale.
+- Narrower widths wrap long text sooner and grow rows downward; wider widths wrap later.
+- Header, body background, empty-state text, and clamp calculations all follow the selected width while the compact 155 px drag anchor remains unchanged.
 
 
 
@@ -172,3 +208,7 @@ Existing Unit Frames features remain available: player/target/focus/pet/target-o
 ## 2.0.108
 
 DMLQuestTracker now mirrors the quest log watched list bidirectionally, supports right-click untracking, Wrath quest difficulty colors or custom header/objective colors, optional background color, tracker scaling, and a configurable completed-quest color.
+
+
+## 2.0.122
+- DMLBuffs: added a global Debuff position dropdown with Below buffs / Above buffs ordering.

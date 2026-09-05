@@ -9,7 +9,7 @@
 DMLBuffs = DMLBuffs or {}
 local B = DMLBuffs
 
-B.VERSION = "2.0.116"
+B.VERSION = "2.0.122"
 B.ICON_SIZE = 24
 B.PARTY_ICON_SIZE = 18
 B.ICON_GAP = 2
@@ -25,7 +25,12 @@ B.SCALE_MIN = 0.50
 B.SCALE_MAX = 2.00
 B.HOVER_LEAVE_DELAY = 0.12
 B.DECURSE_BORDER_PAD = 5
-B.DECURSE_BORDER_SIZE = 3
+B.HIGHLIGHT_OPACITY_MIN = 0.05
+B.HIGHLIGHT_OPACITY_MAX = 1.00
+B.BORDER_THICKNESS_MIN = 1
+B.BORDER_THICKNESS_MAX = 8
+B.ATTACHED_SPACING_MIN = 0
+B.ATTACHED_SPACING_MAX = 40
 
 local DB
 local initialized = false
@@ -50,6 +55,8 @@ local defaults = {
     showAnchors = true,
     locked = false,
     hideBlizzardPlayerBuffs = false,
+    attachedSpacing = 3,
+    debuffPosition = "BELOW_BUFFS",
 
     showPlayerAuras = true,
     detachPlayer = false,
@@ -71,6 +78,8 @@ local defaults = {
 
     highlightDecurse = false,
     highlightStyle = "OVERLAY",
+    highlightOpacity = 0.60,
+    borderThickness = 3,
     decurseColors = {
         Magic = { r = 0.20, g = 0.60, b = 1.00 },
         Poison = { r = 0.10, g = 0.85, b = 0.20 },
@@ -169,8 +178,27 @@ local function NormalizeLocation(value)
     return "ABOVE"
 end
 
+local function NormalizeDebuffPosition(value)
+    if value == "ABOVE_BUFFS" then return "ABOVE_BUFFS" end
+    return "BELOW_BUFFS"
+end
+
 local function NormalizeScale(value)
     return Clamp(value, B.SCALE_MIN, B.SCALE_MAX)
+end
+
+local function NormalizeHighlightOpacity(value)
+    return Clamp(value, B.HIGHLIGHT_OPACITY_MIN, B.HIGHLIGHT_OPACITY_MAX)
+end
+
+local function NormalizeBorderThickness(value)
+    value = math.floor((tonumber(value) or defaults.borderThickness) + 0.5)
+    return Clamp(value, B.BORDER_THICKNESS_MIN, B.BORDER_THICKNESS_MAX)
+end
+
+local function NormalizeAttachedSpacing(value)
+    value = math.floor((tonumber(value) or defaults.attachedSpacing) + 0.5)
+    return Clamp(value, B.ATTACHED_SPACING_MIN, B.ATTACHED_SPACING_MAX)
 end
 
 local function CopyDefaults(reset)
@@ -190,6 +218,8 @@ local function CopyDefaults(reset)
     DB.showAnchors = DB.showAnchors ~= false
     DB.locked = DB.locked and true or false
     DB.hideBlizzardPlayerBuffs = DB.hideBlizzardPlayerBuffs and true or false
+    DB.attachedSpacing = NormalizeAttachedSpacing(DB.attachedSpacing)
+    DB.debuffPosition = NormalizeDebuffPosition(DB.debuffPosition)
 
     DB.showPlayerAuras = DB.showPlayerAuras ~= false
     DB.detachPlayer = DB.detachPlayer and true or false
@@ -211,6 +241,8 @@ local function CopyDefaults(reset)
 
     DB.highlightDecurse = DB.highlightDecurse and true or false
     if DB.highlightStyle ~= "BORDER" then DB.highlightStyle = "OVERLAY" end
+    DB.highlightOpacity = NormalizeHighlightOpacity(DB.highlightOpacity)
+    DB.borderThickness = NormalizeBorderThickness(DB.borderThickness)
     if type(DB.decurseColors) ~= "table" then DB.decurseColors = {} end
     for dispelType, fallback in pairs(defaults.decurseColors) do
         DB.decurseColors[dispelType] = NormalizeColor(DB.decurseColors[dispelType], fallback)
@@ -517,6 +549,7 @@ local function ApplyDisplayLayout(display, force)
 
     local detached = IsDetached(definition)
     local location = NormalizeLocation(DB[definition.locationKey])
+    local attachedSpacing = NormalizeAttachedSpacing(DB.attachedSpacing)
     local anchor
 
     if detached then
@@ -530,7 +563,7 @@ local function ApplyDisplayLayout(display, force)
         return false
     end
 
-    if force or display.currentAnchor ~= anchor or display.currentDetached ~= detached or display.currentLocation ~= location then
+    if force or display.currentAnchor ~= anchor or display.currentDetached ~= detached or display.currentLocation ~= location or display.currentAttachedSpacing ~= attachedSpacing then
         display.container:SetParent(anchor)
         display.container:ClearAllPoints()
         if detached then
@@ -543,9 +576,9 @@ local function ApplyDisplayLayout(display, force)
         else
             display.container:SetScale(1)
             if location == "ABOVE" then
-                display.container:SetPoint("BOTTOM", anchor, "TOP", 0, 3)
+                display.container:SetPoint("BOTTOM", anchor, "TOP", 0, attachedSpacing)
             else
-                display.container:SetPoint("TOP", anchor, "BOTTOM", 0, -3)
+                display.container:SetPoint("TOP", anchor, "BOTTOM", 0, -attachedSpacing)
             end
             if anchor.GetFrameStrata and display.container.SetFrameStrata then
                 display.container:SetFrameStrata(anchor:GetFrameStrata())
@@ -560,6 +593,7 @@ local function ApplyDisplayLayout(display, force)
         display.currentAnchor = anchor
         display.currentDetached = detached
         display.currentLocation = location
+        display.currentAttachedSpacing = attachedSpacing
     elseif detached then
         display.container:SetScale(NormalizeScale(DB[definition.scaleKey]))
     end
@@ -694,23 +728,43 @@ local function LayoutDisplay(display, buffCount, debuffCount)
     display.buffs:ClearAllPoints()
     display.debuffs:ClearAllPoints()
 
+    local debuffsAboveBuffs = NormalizeDebuffPosition(DB.debuffPosition) == "ABOVE_BUFFS"
+
     if location == "ABOVE" then
-        -- Closest to the unit frame is the container bottom: put debuffs there,
-        -- then stack buffs farther outward/upward.
-        if hasDebuffs then
-            display.debuffs:SetPoint("BOTTOM", display.container, "BOTTOM", 0, 0)
-            if hasBuffs then display.buffs:SetPoint("BOTTOM", display.debuffs, "TOP", 0, B.GROUP_GAP) end
-        elseif hasBuffs then
-            display.buffs:SetPoint("BOTTOM", display.container, "BOTTOM", 0, 0)
+        -- The container grows upward from the unit frame. The selected debuff
+        -- position controls the visual row order, independent of attachment side.
+        if debuffsAboveBuffs then
+            if hasBuffs then
+                display.buffs:SetPoint("BOTTOM", display.container, "BOTTOM", 0, 0)
+                if hasDebuffs then display.debuffs:SetPoint("BOTTOM", display.buffs, "TOP", 0, B.GROUP_GAP) end
+            elseif hasDebuffs then
+                display.debuffs:SetPoint("BOTTOM", display.container, "BOTTOM", 0, 0)
+            end
+        else
+            if hasDebuffs then
+                display.debuffs:SetPoint("BOTTOM", display.container, "BOTTOM", 0, 0)
+                if hasBuffs then display.buffs:SetPoint("BOTTOM", display.debuffs, "TOP", 0, B.GROUP_GAP) end
+            elseif hasBuffs then
+                display.buffs:SetPoint("BOTTOM", display.container, "BOTTOM", 0, 0)
+            end
         end
     else
-        -- Below the frame the container top is closest, so debuffs remain the
-        -- inner row and buffs continue downward/outward.
-        if hasDebuffs then
-            display.debuffs:SetPoint("TOP", display.container, "TOP", 0, 0)
-            if hasBuffs then display.buffs:SetPoint("TOP", display.debuffs, "BOTTOM", 0, -B.GROUP_GAP) end
-        elseif hasBuffs then
-            display.buffs:SetPoint("TOP", display.container, "TOP", 0, 0)
+        -- The container grows downward from the unit frame. Keep the same
+        -- on-screen Above/Below Buffs meaning instead of tying it to proximity.
+        if debuffsAboveBuffs then
+            if hasDebuffs then
+                display.debuffs:SetPoint("TOP", display.container, "TOP", 0, 0)
+                if hasBuffs then display.buffs:SetPoint("TOP", display.debuffs, "BOTTOM", 0, -B.GROUP_GAP) end
+            elseif hasBuffs then
+                display.buffs:SetPoint("TOP", display.container, "TOP", 0, 0)
+            end
+        else
+            if hasBuffs then
+                display.buffs:SetPoint("TOP", display.container, "TOP", 0, 0)
+                if hasDebuffs then display.debuffs:SetPoint("TOP", display.buffs, "BOTTOM", 0, -B.GROUP_GAP) end
+            elseif hasDebuffs then
+                display.debuffs:SetPoint("TOP", display.container, "TOP", 0, 0)
+            end
         end
     end
 end
@@ -860,7 +914,7 @@ local function GetHighlightLayer(frame)
     end
 
     local pad = B.DECURSE_BORDER_PAD
-    local size = B.DECURSE_BORDER_SIZE
+    local size = NormalizeBorderThickness(DB and DB.borderThickness or defaults.borderThickness)
     border.top:SetPoint("BOTTOMLEFT", holder, "TOPLEFT", -pad, pad)
     border.top:SetPoint("BOTTOMRIGHT", holder, "TOPRIGHT", pad, pad)
     border.top:SetHeight(size)
@@ -966,15 +1020,22 @@ local function ShowHighlight(frame, dispelType)
     local fallback = defaults.decurseColors[dispelType]
     local color = NormalizeColor(DB.decurseColors[dispelType], fallback)
 
+    local opacity = NormalizeHighlightOpacity(DB.highlightOpacity)
+
     if DB.highlightStyle == "BORDER" then
         layer.overlay:Hide()
+        local thickness = NormalizeBorderThickness(DB.borderThickness)
+        layer.border.top:SetHeight(thickness)
+        layer.border.bottom:SetHeight(thickness)
+        layer.border.left:SetWidth(thickness)
+        layer.border.right:SetWidth(thickness)
         for _, texture in pairs(layer.border) do
-            texture:SetVertexColor(color.r, color.g, color.b, 1)
+            texture:SetVertexColor(color.r, color.g, color.b, opacity)
             texture:Show()
         end
     else
         for _, texture in pairs(layer.border) do texture:Hide() end
-        layer.overlay:SetVertexColor(color.r, color.g, color.b, 0.27)
+        layer.overlay:SetVertexColor(color.r, color.g, color.b, opacity)
         layer.overlay:Show()
     end
 end
@@ -1072,6 +1133,8 @@ local function SetWidgetEnabled(widget, enabled)
     end
 end
 
+local RefreshControlEnableState
+
 local function CreateLocationDropDown(name, parent, x, y, dbKey)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
@@ -1103,6 +1166,39 @@ local function CreateLocationDropDown(name, parent, x, y, dbKey)
     return dropdown
 end
 
+local function CreateDebuffPositionDropDown(parent, x, y)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    label:SetText("Debuff position:")
+    local dropdown = CreateFrame("Frame", "DMLUIBuffsDebuffPositionDropDown", parent, "UIDropDownMenuTemplate")
+    dropdown:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 90, y + 16)
+    UIDropDownMenu_SetWidth(dropdown, 115)
+    dropdown.dmlIsDropDown = true
+    dropdown.dmlLabel = label
+    UIDropDownMenu_Initialize(dropdown, function()
+        local options = {
+            { value = "BELOW_BUFFS", text = "Below buffs" },
+            { value = "ABOVE_BUFFS", text = "Above buffs" }
+        }
+        for _, option in ipairs(options) do
+            local info = UIDropDownMenu_CreateInfo()
+            info.text = option.text
+            info.value = option.value
+            info.checked = NormalizeDebuffPosition(DB.debuffPosition) == option.value
+            info.func = function(button)
+                DB.debuffPosition = NormalizeDebuffPosition(button.value)
+                UIDropDownMenu_SetSelectedValue(dropdown, DB.debuffPosition)
+                UIDropDownMenu_SetText(dropdown, DB.debuffPosition == "ABOVE_BUFFS" and "Above buffs" or "Below buffs")
+                if initialized and not InCombat() then
+                    B:RefreshAll(false)
+                end
+            end
+            UIDropDownMenu_AddButton(info)
+        end
+    end)
+    return dropdown
+end
+
 local function CreateStyleDropDown(parent, x, y)
     local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
@@ -1123,12 +1219,98 @@ local function CreateStyleDropDown(parent, x, y)
                 DB.highlightStyle = button.value
                 UIDropDownMenu_SetSelectedValue(dropdown, button.value)
                 UIDropDownMenu_SetText(dropdown, button.value == "BORDER" and "Border" or "Overlay")
+                if RefreshControlEnableState then RefreshControlEnableState() end
                 RefreshHighlights()
             end
             UIDropDownMenu_AddButton(info)
         end
     end)
     return dropdown
+end
+
+local function CreateHighlightOpacityBox(parent, x, y)
+    local label = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    label:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    label:SetText("Highlight opacity:")
+
+    local edit = CreateFrame("EditBox", "DMLUIBuffsHighlightOpacityEditBox", parent, "InputBoxTemplate")
+    edit:SetWidth(52)
+    edit:SetHeight(20)
+    edit:SetPoint("TOPLEFT", parent, "TOPLEFT", x + 112, y + 6)
+    edit:SetAutoFocus(false)
+    edit:SetMaxLetters(4)
+    edit.dmlLabel = label
+
+    local function Commit()
+        if not DB then return end
+        DB.highlightOpacity = NormalizeHighlightOpacity(edit:GetText())
+        edit:SetText(string.format("%.2f", DB.highlightOpacity))
+        edit:ClearFocus()
+        RefreshHighlights()
+    end
+
+    edit:SetScript("OnEnterPressed", Commit)
+    edit:SetScript("OnEditFocusLost", function()
+        if configRefreshing or not DB then return end
+        DB.highlightOpacity = NormalizeHighlightOpacity(edit:GetText())
+        edit:SetText(string.format("%.2f", DB.highlightOpacity))
+        RefreshHighlights()
+    end)
+    edit:SetScript("OnEscapePressed", function()
+        edit:SetText(string.format("%.2f", NormalizeHighlightOpacity(DB and DB.highlightOpacity or defaults.highlightOpacity)))
+        edit:ClearFocus()
+    end)
+    return edit
+end
+
+local function CreateBorderThicknessSlider(parent, x, y)
+    local name = "DMLUIBuffsBorderThicknessSlider"
+    local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    slider:SetWidth(150)
+    slider:SetHeight(16)
+    slider:SetMinMaxValues(B.BORDER_THICKNESS_MIN, B.BORDER_THICKNESS_MAX)
+    slider:SetValueStep(1)
+    _G[name .. "Low"]:SetText(tostring(B.BORDER_THICKNESS_MIN))
+    _G[name .. "High"]:SetText(tostring(B.BORDER_THICKNESS_MAX))
+    _G[name .. "Text"]:SetText("Border thickness")
+    slider.dmlLabel = _G[name .. "Text"]
+    slider:SetScript("OnValueChanged", function(_, value)
+        if configRefreshing or not DB then return end
+        DB.borderThickness = NormalizeBorderThickness(value)
+        if math.abs((slider:GetValue() or DB.borderThickness) - DB.borderThickness) > 0.01 then
+            slider:SetValue(DB.borderThickness)
+        end
+        RefreshHighlights()
+    end)
+    return slider
+end
+
+local function CreateAttachedSpacingSlider(parent, x, y)
+    local name = "DMLUIBuffsAttachedSpacingSlider"
+    local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", x, y)
+    slider:SetWidth(160)
+    slider:SetHeight(16)
+    slider:SetMinMaxValues(B.ATTACHED_SPACING_MIN, B.ATTACHED_SPACING_MAX)
+    slider:SetValueStep(1)
+    _G[name .. "Low"]:SetText(tostring(B.ATTACHED_SPACING_MIN))
+    _G[name .. "High"]:SetText(tostring(B.ATTACHED_SPACING_MAX))
+    _G[name .. "Text"]:SetText("Attached aura spacing: 3 px")
+    slider.dmlLabel = _G[name .. "Text"]
+    slider:SetScript("OnValueChanged", function(_, value)
+        if configRefreshing or not DB then return end
+        DB.attachedSpacing = NormalizeAttachedSpacing(value)
+        if math.abs((slider:GetValue() or DB.attachedSpacing) - DB.attachedSpacing) > 0.01 then
+            slider:SetValue(DB.attachedSpacing)
+        end
+        _G[name .. "Text"]:SetText("Attached aura spacing: " .. tostring(DB.attachedSpacing) .. " px")
+        if initialized and not InCombat() then
+            ApplyAllLayouts(true)
+            B:RefreshAll(false)
+        end
+    end)
+    return slider
 end
 
 local function CreateScaleSlider(parent, name, x, y, dbKey, displayKey)
@@ -1207,8 +1389,6 @@ local function CreateColorRow(parent, dispelType, labelText, x, y)
     return swatch
 end
 
-local RefreshControlEnableState
-
 local function SelectAttachmentMode(attachKey, detachKey, detached)
     local attach = configControls[attachKey]
     local detach = configControls[detachKey]
@@ -1233,10 +1413,13 @@ RefreshControlEnableState = function()
     local targetDetached = (not targetFrameActive) or (configControls.detachTarget:GetChecked() and true or false)
     local totDetached = (not totFrameActive) or (configControls.detachTargetTarget:GetChecked() and true or false)
     local decurse = configControls.highlightDecurse:GetChecked() and true or false
+    local anyAttachedFrameActive = playerFrameActive or targetFrameActive or totFrameActive or partyFramesActive
 
     SetWidgetEnabled(configControls.showAnchors, enabled)
     SetWidgetEnabled(configControls.locked, enabled)
     SetWidgetEnabled(configControls.hideBlizzardPlayerBuffs, enabled)
+    SetWidgetEnabled(configControls.attachedSpacing, enabled and anyAttachedFrameActive)
+    SetWidgetEnabled(configControls.debuffPosition, enabled)
 
     -- Visibility and detached panels remain usable even if the corresponding
     -- DML unit frame is disabled. Attachment controls are enabled per frame.
@@ -1264,6 +1447,8 @@ RefreshControlEnableState = function()
     SetWidgetEnabled(configControls.partyLocation, enabled and partyFramesActive and partyShown)
     SetWidgetEnabled(configControls.highlightDecurse, enabled and highlightFramesActive)
     SetWidgetEnabled(configControls.highlightStyle, enabled and highlightFramesActive and decurse)
+    SetWidgetEnabled(configControls.highlightOpacity, enabled and highlightFramesActive and decurse)
+    SetWidgetEnabled(configControls.borderThickness, enabled and highlightFramesActive and decurse and DB.highlightStyle == "BORDER")
     for dispelType in pairs(defaults.decurseColors) do
         SetWidgetEnabled(configControls["color_" .. dispelType], enabled and highlightFramesActive and decurse)
     end
@@ -1276,6 +1461,10 @@ RefreshConfig = function()
     configControls.showAnchors:SetChecked(DB.showAnchors and 1 or nil)
     configControls.locked:SetChecked(DB.locked and 1 or nil)
     configControls.hideBlizzardPlayerBuffs:SetChecked(DB.hideBlizzardPlayerBuffs and 1 or nil)
+    configControls.attachedSpacing:SetValue(NormalizeAttachedSpacing(DB.attachedSpacing))
+    _G[configControls.attachedSpacing:GetName() .. "Text"]:SetText("Attached aura spacing: " .. tostring(NormalizeAttachedSpacing(DB.attachedSpacing)) .. " px")
+    UIDropDownMenu_SetSelectedValue(configControls.debuffPosition, NormalizeDebuffPosition(DB.debuffPosition))
+    UIDropDownMenu_SetText(configControls.debuffPosition, NormalizeDebuffPosition(DB.debuffPosition) == "ABOVE_BUFFS" and "Above buffs" or "Below buffs")
 
     local playerFrameActive = IsDMLFrameActive("player")
     local targetFrameActive = IsDMLFrameActive("target")
@@ -1309,6 +1498,8 @@ RefreshConfig = function()
     configControls.highlightDecurse:SetChecked(DB.highlightDecurse and 1 or nil)
     UIDropDownMenu_SetSelectedValue(configControls.highlightStyle, DB.highlightStyle)
     UIDropDownMenu_SetText(configControls.highlightStyle, DB.highlightStyle == "BORDER" and "Border" or "Overlay")
+    configControls.highlightOpacity:SetText(string.format("%.2f", NormalizeHighlightOpacity(DB.highlightOpacity)))
+    configControls.borderThickness:SetValue(NormalizeBorderThickness(DB.borderThickness))
     RefreshColorSwatches()
     configRefreshing = false
     RefreshControlEnableState()
@@ -1324,6 +1515,8 @@ local function ApplyConfig()
     DB.showAnchors = configControls.showAnchors:GetChecked() and true or false
     DB.locked = configControls.locked:GetChecked() and true or false
     DB.hideBlizzardPlayerBuffs = configControls.hideBlizzardPlayerBuffs:GetChecked() and true or false
+    DB.attachedSpacing = NormalizeAttachedSpacing(configControls.attachedSpacing:GetValue())
+    DB.debuffPosition = NormalizeDebuffPosition(DB.debuffPosition)
 
     local playerFrameActive = IsDMLFrameActive("player")
     local targetFrameActive = IsDMLFrameActive("target")
@@ -1347,7 +1540,11 @@ local function ApplyConfig()
     if targetFrameActive then DB.detachTarget = configControls.detachTarget:GetChecked() and true or false end
     if totFrameActive then DB.detachTargetTarget = configControls.detachTargetTarget:GetChecked() and true or false end
     if partyFramesActive then DB.showPartyAuras = configControls.showPartyAuras:GetChecked() and true or false end
-    if highlightFramesActive then DB.highlightDecurse = configControls.highlightDecurse:GetChecked() and true or false end
+    if highlightFramesActive then
+        DB.highlightDecurse = configControls.highlightDecurse:GetChecked() and true or false
+        DB.highlightOpacity = NormalizeHighlightOpacity(configControls.highlightOpacity:GetText())
+        DB.borderThickness = NormalizeBorderThickness(configControls.borderThickness:GetValue())
+    end
 
     ApplyAllLayouts(true)
     B:RefreshAll(false)
@@ -1404,24 +1601,26 @@ local function CreateConfigFrame()
     local showAnchors = CreateCheckField(configFrame, "showAnchors", "Show anchors", 40, -108)
     local locked = CreateCheckField(configFrame, "locked", "Lock aura frames", 40, -138)
     CreateCheckField(configFrame, "hideBlizzardPlayerBuffs", "Hide Blizzard player buffs", 40, -168)
+    configControls.attachedSpacing = CreateAttachedSpacingSlider(configFrame, 48, -208)
+    configControls.debuffPosition = CreateDebuffPositionDropDown(configFrame, 40, -258)
     use:SetScript("OnClick", RefreshControlEnableState)
     showAnchors:SetScript("OnClick", RefreshControlEnableState)
     locked:SetScript("OnClick", RefreshControlEnableState)
 
     local playerHeader = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    playerHeader:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -220)
+    playerHeader:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 34, -302)
     playerHeader:SetText("Player")
-    local showPlayer = CreateCheckField(configFrame, "showPlayerAuras", "Show player buffs/debuffs", 40, -242)
-    local attachPlayer = CreateCheckField(configFrame, "attachPlayer", "Attach player buffs/debuffs to portrait", 40, -272)
-    local detachPlayer = CreateCheckField(configFrame, "detachPlayer", "Detach player buffs/debuffs", 40, -302)
+    local showPlayer = CreateCheckField(configFrame, "showPlayerAuras", "Show player buffs/debuffs", 40, -324)
+    local attachPlayer = CreateCheckField(configFrame, "attachPlayer", "Attach player buffs/debuffs to portrait", 40, -354)
+    local detachPlayer = CreateCheckField(configFrame, "detachPlayer", "Detach player buffs/debuffs", 40, -384)
     showPlayer:SetScript("OnClick", RefreshControlEnableState)
     attachPlayer:SetScript("OnClick", function() SelectAttachmentMode("attachPlayer", "detachPlayer", false) end)
     detachPlayer:SetScript("OnClick", function() SelectAttachmentMode("attachPlayer", "detachPlayer", true) end)
-    configControls.playerLocation = CreateLocationDropDown("DMLUIBuffsPlayerLocationDropDown", configFrame, 40, -345, "playerLocation")
-    configControls.playerScale = CreateScaleSlider(configFrame, "DMLUIBuffsPlayerScaleSlider", 48, -402, "playerScale", "player")
+    configControls.playerLocation = CreateLocationDropDown("DMLUIBuffsPlayerLocationDropDown", configFrame, 40, -427, "playerLocation")
+    configControls.playerScale = CreateScaleSlider(configFrame, "DMLUIBuffsPlayerScaleSlider", 48, -484, "playerScale", "player")
 
     local mouseNote = configFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    mouseNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -450)
+    mouseNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 40, -532)
     mouseNote:SetWidth(245)
     mouseNote:SetJustifyH("LEFT")
     mouseNote:SetText("Attached auras stay compact; mouse over the unit frame or aura icons to reveal more. Detached panels show the expanded aura set.")
@@ -1470,17 +1669,19 @@ local function CreateConfigFrame()
     local highlight = CreateCheckField(configFrame, "highlightDecurse", "Highlight player unit frames for decurse", 636, -266)
     highlight:SetScript("OnClick", RefreshControlEnableState)
     configControls.highlightStyle = CreateStyleDropDown(configFrame, 636, -309)
+    configControls.highlightOpacity = CreateHighlightOpacityBox(configFrame, 646, -355)
+    configControls.borderThickness = CreateBorderThicknessSlider(configFrame, 646, -408)
 
-    CreateColorRow(configFrame, "Magic", "Magic", 646, -368)
-    CreateColorRow(configFrame, "Poison", "Poison", 646, -402)
-    CreateColorRow(configFrame, "Disease", "Disease", 646, -436)
-    CreateColorRow(configFrame, "Curse", "Curse", 646, -470)
+    CreateColorRow(configFrame, "Magic", "Magic", 646, -466)
+    CreateColorRow(configFrame, "Poison", "Poison", 646, -500)
+    CreateColorRow(configFrame, "Disease", "Disease", 646, -534)
+    CreateColorRow(configFrame, "Curse", "Curse", 646, -568)
 
     local cleanseNote = configFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    cleanseNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 636, -520)
+    cleanseNote:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 636, -618)
     cleanseNote:SetWidth(245)
     cleanseNote:SetJustifyH("LEFT")
-    cleanseNote:SetText("If multiple cleanseable effects are present, the most recently applied effect controls the highlight color. Border mode is drawn outside the frame separately from DML aggro highlighting.")
+    cleanseNote:SetText("If multiple cleanseable effects are present, the most recently applied effect controls the highlight color. Opacity applies to both Overlay and Border; Border thickness is available only in Border mode.")
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
     apply:SetWidth(80)

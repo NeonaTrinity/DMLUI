@@ -1,4 +1,4 @@
-DML Quest Tracker 2.0.117 - in-game checklist
+DML Quest Tracker 2.0.118 - in-game checklist
 
 [ ] Quest Tracker launcher entry opens DMLQuestTracker settings.
 [ ] With DMLQuestTracker folder removed, Quest Tracker launcher entry is grayed out.
@@ -37,3 +37,13 @@ DML Quest Tracker 2.0.117 - in-game checklist
 [ ] Collapse the entire tracker: the header remains exactly stationary and all quest rows collapse upward into the header.
 [ ] Expand the entire tracker again: quest rows grow downward from the same header position.
 [ ] The drag anchor remains at the same top-left relationship to the stationary header while content height changes.
+
+
+[ ] Tracker width slider ranges from 220-600 px in 10 px steps and defaults to 310 px.
+[ ] Changing tracker width does not change tracker scale or font/icon size.
+[ ] Narrowing the tracker causes long quest names/objectives to wrap earlier and increases row height cleanly.
+[ ] Widening the tracker causes long quest names/objectives to wrap later and reduces row height cleanly.
+[ ] Header/background/empty text all resize to the selected tracker width.
+[ ] The 155 px drag anchor remains unchanged and flush to the top-left at every tracker width.
+[ ] Screen-edge clamping continues to use the 155 px anchor rather than the variable tracker body width.
+[ ] Tracker width persists across /reload.

@@ -1,4 +1,4 @@
-DMLUI - Quest Tracker 2.0.117
+DMLUI - Quest Tracker 2.0.118
 World of Warcraft 3.3.5a / Interface 30300
 
 Optional DMLUI quest tracker module.
@@ -16,12 +16,18 @@ Features:
 - Optional tracker background.
 - Independent Hide quest header background setting for the DML Quest Tracker header.
 - Tracker scale from 0.50x to 2.00x.
+- Independent tracker width from 220 to 600 px; width changes quest/objective word wrapping without changing visual scale.
 - Compact half-width movable DML anchor aligned flush with the tracker's top-left edge, with Show anchors / Lock tracker. Screen-edge clamping follows the anchor itself, so the tracker body may extend off-screen.
 - Disables Blizzard WatchFrame only while Use DML Quest Tracker is enabled.
 
 Slash commands:
 /dmlquest
 /dmlqt
+
+2.0.118
+- Added an independent Quest tracker width slider (220-600 px, 10 px steps).
+- Width changes the actual quest/objective text layout and word-wrap point without changing tracker scale.
+- Quest titles, objectives, header/background, empty-state text, and screen-edge anchor clamping all follow the selected width.
 
 2.0.117
 - The DML Quest Tracker header is now a fixed top origin.

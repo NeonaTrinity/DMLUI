@@ -5,8 +5,11 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.117"
+QT.VERSION = "2.0.118"
 QT.WIDTH = 310
+QT.WIDTH_MIN = 220
+QT.WIDTH_MAX = 600
+QT.WIDTH_STEP = 10
 QT.HEADER_HEIGHT = 24
 QT.CONTAINER_HEIGHT = QT.HEADER_HEIGHT + 5
 QT.QUEST_MIN_HEIGHT = 18
@@ -23,7 +26,7 @@ QT.SCALE_MAX = 2.00
 QT.SCALE_STEP = 0.05
 
 local defaults = {
-    version = 3,
+    version = 4,
     enabled = false,
     showAnchors = true,
     locked = false,
@@ -35,6 +38,7 @@ local defaults = {
     hideQuestHeaderBackground = false,
     trackerBackgroundColor = { r = 0.025, g = 0.025, b = 0.025 },
     trackerScale = 1.00,
+    trackerWidth = QT.WIDTH,
     useQuestCompletionColor = true,
     questCompletionColor = { r = 0.25, g = 1.00, b = 0.25 },
     position = {
@@ -105,6 +109,19 @@ local function SnapScale(value)
     return QT.SCALE_MIN + (steps * QT.SCALE_STEP)
 end
 
+local function SnapWidth(value)
+    value = Clamp(value, QT.WIDTH_MIN, QT.WIDTH_MAX)
+    local steps = math.floor(((value - QT.WIDTH_MIN) / QT.WIDTH_STEP) + 0.5)
+    return QT.WIDTH_MIN + (steps * QT.WIDTH_STEP)
+end
+
+local function GetTrackerWidth()
+    if DB and DB.trackerWidth then
+        return SnapWidth(DB.trackerWidth)
+    end
+    return QT.WIDTH
+end
+
 local function CopyDefaults(reset)
     if reset or type(DMLQuestTrackerDB) ~= "table" then
         DMLQuestTrackerDB = {}
@@ -131,6 +148,7 @@ local function CopyDefaults(reset)
     DB.trackerBackgroundColor = NormalizeColor(DB.trackerBackgroundColor, defaults.trackerBackgroundColor)
     DB.questCompletionColor = NormalizeColor(DB.questCompletionColor, defaults.questCompletionColor)
     DB.trackerScale = SnapScale(DB.trackerScale or defaults.trackerScale)
+    DB.trackerWidth = SnapWidth(DB.trackerWidth or defaults.trackerWidth)
 
     if type(DB.position) ~= "table" then
         DB.position = CopyTable(defaults.position)
@@ -169,7 +187,7 @@ local function UpdateAnchorClampInsets()
     --   top    = keep the anchor's top edge on-screen
     --   bottom = allow the tracker body below the anchor to leave the screen
     local height = tonumber(container:GetHeight()) or QT.CONTAINER_HEIGHT
-    local rightOverflow = math.max(0, QT.WIDTH - QT.ANCHOR_WIDTH)
+    local rightOverflow = math.max(0, GetTrackerWidth() - QT.ANCHOR_WIDTH)
     local anchorTopOffset = QT.ANCHOR_HEIGHT + QT.ANCHOR_GAP
     local bodyBelowAnchor = height + QT.ANCHOR_GAP
 
@@ -237,7 +255,7 @@ local function AcquireQuestRow(index)
     if row then return row end
 
     row = CreateFrame("Button", nil, tracker)
-    row:SetWidth(QT.WIDTH - 16)
+    row:SetWidth(GetTrackerWidth() - 16)
     row:SetHeight(QT.QUEST_MIN_HEIGHT)
     row:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
@@ -248,7 +266,7 @@ local function AcquireQuestRow(index)
 
     row.title = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     row.title:SetPoint("TOPLEFT", row, "TOPLEFT", 19, -1)
-    row.title:SetWidth(QT.WIDTH - 42)
+    row.title:SetWidth(GetTrackerWidth() - 42)
     row.title:SetJustifyH("LEFT")
     row.title:SetJustifyV("TOP")
     if row.title.SetNonSpaceWrap then row.title:SetNonSpaceWrap(true) end
@@ -295,7 +313,7 @@ local function AcquireObjectiveRow(index)
     if row then return row end
 
     row = tracker:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    row:SetWidth(QT.WIDTH - QT.OBJECTIVE_INDENT - 18)
+    row:SetWidth(GetTrackerWidth() - QT.OBJECTIVE_INDENT - 18)
     row:SetJustifyH("LEFT")
     row:SetJustifyV("TOP")
     if row.SetNonSpaceWrap then row:SetNonSpaceWrap(true) end
@@ -371,8 +389,31 @@ local function InstallQuestWatchMutationHooks()
     watchMutationHooksInstalled = installed
 end
 
+local function ApplyTrackerWidth()
+    local width = GetTrackerWidth()
+
+    if container then container:SetWidth(width) end
+    if tracker then tracker:SetWidth(width) end
+    if headerButton then headerButton:SetWidth(width - 10) end
+    if emptyText then emptyText:SetWidth(width - 28) end
+
+    local i
+    for i = 1, #questRows do
+        local row = questRows[i]
+        row:SetWidth(width - 16)
+        if row.title then row.title:SetWidth(width - 42) end
+    end
+    for i = 1, #objectiveRows do
+        objectiveRows[i]:SetWidth(width - QT.OBJECTIVE_INDENT - 18)
+    end
+
+    UpdateAnchorClampInsets()
+end
+
 local function ApplyAppearance()
     if not DB then return end
+
+    ApplyTrackerWidth()
 
     if container and container.SetScale then
         container:SetScale(SnapScale(DB.trackerScale))
@@ -716,6 +757,8 @@ local function RefreshConfig()
     controls.useQuestCompletionColor:SetChecked(DB.useQuestCompletionColor and 1 or nil)
     controls.scaleSlider:SetValue(DB.trackerScale)
     controls.scaleValue:SetText(string.format("%.2fx", DB.trackerScale))
+    controls.widthSlider:SetValue(DB.trackerWidth)
+    controls.widthValue:SetText(string.format("%d px", DB.trackerWidth))
     RefreshColorSwatches()
     RefreshConditionalControls()
     configRefreshing = false
@@ -731,6 +774,7 @@ local function ApplyConfig()
     DB.hideQuestHeaderBackground = controls.hideQuestHeaderBackground:GetChecked() and true or false
     DB.useQuestCompletionColor = controls.useQuestCompletionColor:GetChecked() and true or false
     DB.trackerScale = SnapScale(controls.scaleSlider:GetValue())
+    DB.trackerWidth = SnapWidth(controls.widthSlider:GetValue())
     ApplyAppearance()
     ApplyEnabledState()
     QT:Refresh()
@@ -795,7 +839,7 @@ local function CreateConfigFrame()
 
     configFrame = CreateFrame("Frame", "DMLUIQuestTrackerConfigFrame", UIParent)
     configFrame:SetWidth(620)
-    configFrame:SetHeight(575)
+    configFrame:SetHeight(650)
     configFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
     configFrame:SetFrameStrata("DIALOG")
     configFrame:SetFrameLevel(100)
@@ -876,11 +920,35 @@ local function CreateConfigFrame()
         if controls.scaleValue then controls.scaleValue:SetText(string.format("%.2fx", value)) end
     end)
 
+    local widthLabel = configFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    widthLabel:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 360, -388)
+    widthLabel:SetText("Quest tracker width")
+
+    local widthSlider = CreateFrame("Slider", "DMLUIQuestTrackerWidthSlider", configFrame, "OptionsSliderTemplate")
+    widthSlider:SetWidth(205)
+    widthSlider:SetHeight(16)
+    widthSlider:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 357, -418)
+    widthSlider:SetMinMaxValues(QT.WIDTH_MIN, QT.WIDTH_MAX)
+    if widthSlider.SetValueStep then widthSlider:SetValueStep(QT.WIDTH_STEP) end
+    _G[widthSlider:GetName() .. "Low"]:SetText(tostring(QT.WIDTH_MIN))
+    _G[widthSlider:GetName() .. "High"]:SetText(tostring(QT.WIDTH_MAX))
+    _G[widthSlider:GetName() .. "Text"]:SetText("")
+    controls.widthSlider = widthSlider
+
+    local widthValue = configFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    widthValue:SetPoint("TOP", widthSlider, "BOTTOM", 0, -4)
+    widthValue:SetText(tostring(QT.WIDTH) .. " px")
+    controls.widthValue = widthValue
+    widthSlider:SetScript("OnValueChanged", function(self, value)
+        value = SnapWidth(value)
+        if controls.widthValue then controls.widthValue:SetText(string.format("%d px", value)) end
+    end)
+
     local hint = configFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    hint:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 38, -390)
-    hint:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -38, -390)
+    hint:SetPoint("TOPLEFT", configFrame, "TOPLEFT", 38, -475)
+    hint:SetPoint("TOPRIGHT", configFrame, "TOPRIGHT", -38, -475)
     hint:SetJustifyH("LEFT")
-    hint:SetText("Left-click [+] / [-] on a quest to collapse or expand its objectives. Right-click a quest header to untrack it from both DML and Blizzard's quest log. Quest difficulty colors use the same GetQuestDifficultyColor() system as the Wrath quest log.")
+    hint:SetText("Left-click [+] / [-] on a quest to collapse or expand its objectives. Right-click a quest header to untrack it from both DML and Blizzard's quest log. Quest difficulty colors use the same GetQuestDifficultyColor() system as the Wrath quest log. Tracker width changes the word-wrap point independently from scale.")
 
     local apply = CreateFrame("Button", nil, configFrame, "UIPanelButtonTemplate")
     apply:SetWidth(80)

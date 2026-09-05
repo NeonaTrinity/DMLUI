@@ -1,9 +1,14 @@
-DMLUI Buffs 2.0.116 - in-game checklist
+DMLUI Buffs 2.0.122 - in-game checklist
 
 [ ] Launcher shows Buffs when DMLBuffs is installed.
 [ ] Launcher Buffs button is gray when the DMLBuffs folder is removed.
 [ ] Use DML Buffs OFF leaves Blizzard buffs and all DML aura frames unchanged/hidden.
 [ ] Player/Target/ToT attached aura rows are anchored to the portrait area and appear above/below correctly.
+[ ] Attached aura spacing defaults to 3 px after upgrading from an older version.
+[ ] Attached aura spacing slider ranges from 0 through 40 px and updates attached auras immediately.
+[ ] Increasing attached spacing moves Above auras farther upward and Below auras farther downward.
+[ ] Attached spacing affects Player, Target, Target-of-Target, and Party attached aura rows consistently.
+[ ] Detached Player/Target/ToT panels do not move when Attached aura spacing changes.
 [ ] Debuffs are always the row nearest the unit frame; buffs stack outward.
 [ ] Mouse over attached unit frame expands compact aura set; mouse leave collapses it.
 [ ] Detached Player/Target/ToT panels show expanded auras and their DML anchors.
@@ -16,6 +21,10 @@ DMLUI Buffs 2.0.116 - in-game checklist
 [ ] Debuff icon borders use Blizzard DebuffTypeColor.
 [ ] Decurse Overlay highlights friendly player frames without blocking text/bars.
 [ ] Decurse Border draws outside the frame and can coexist with aggro border.
+[ ] Highlight opacity accepts 0.05-1.00 and visibly changes Overlay strength.
+[ ] In Border mode the same Highlight opacity changes border opacity/brightness.
+[ ] Border thickness slider is gray in Overlay mode and active in Border mode.
+[ ] Border thickness changes from 1 through 8 px without moving/resizing the unit frame.
 [ ] Magic/Poison/Disease/Curse color pickers update highlights.
 [ ] When multiple supported debuffs are present, newest applied effect controls the highlight.
 [ ] Hostile target players are not treated as friendly cleanse targets.
