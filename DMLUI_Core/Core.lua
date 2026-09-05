@@ -8,7 +8,7 @@
 DMLUI = DMLUI or {}
 local UI = DMLUI
 
-UI.VERSION = "2.0.114"
+UI.VERSION = "2.0.123"
 UI.modules = UI.modules or {}
 UI.knownModules = UI.knownModules or {
     { key = "ActionBars", name = "Action Bars", order = 10 },
@@ -22,9 +22,17 @@ UI.knownModules = UI.knownModules or {
 }
 
 local defaults = {
-    version = 1,
+    version = 2,
     showMinimapButton = true,
     minimapAngle = 225
+}
+
+UI.profileModuleOrder = UI.profileModuleOrder or { "UnitFrames", "CastBars", "Buffs", "QuestTracker" }
+UI.profileModuleLabels = UI.profileModuleLabels or {
+    UnitFrames = "Unit Frames",
+    CastBars = "Cast Bars",
+    Buffs = "Buffs",
+    QuestTracker = "Quest Tracker"
 }
 
 local DB
@@ -40,6 +48,23 @@ end
 
 UI.Print = Print
 
+local function DeepCopy(value)
+    if type(value) ~= "table" then return value end
+    local copy = {}
+    for key, child in pairs(value) do
+        copy[DeepCopy(key)] = DeepCopy(child)
+    end
+    return copy
+end
+
+local function NormalizeProfileName(name)
+    name = tostring(name or "")
+    name = string.gsub(name, "^%s+", "")
+    name = string.gsub(name, "%s+$", "")
+    if string.len(name) > 40 then name = string.sub(name, 1, 40) end
+    return name
+end
+
 local function CopyDefaults()
     if type(DMLUIDB) ~= "table" then
         DMLUIDB = {}
@@ -52,6 +77,9 @@ local function CopyDefaults()
             DB[key] = value
         end
     end
+
+    if type(DB.profiles) ~= "table" then DB.profiles = {} end
+    DB.lastProfileName = NormalizeProfileName(DB.lastProfileName)
 
     DB.version = defaults.version
     DB.showMinimapButton = DB.showMinimapButton ~= false
@@ -83,6 +111,9 @@ function UI:RegisterModule(key, info)
     if UI.RefreshAdvancedPage then
         UI:RefreshAdvancedPage()
     end
+    if UI.RefreshProfilesPage then
+        UI:RefreshProfilesPage()
+    end
     return true
 end
 
@@ -94,6 +125,9 @@ function UI:UnregisterModule(key)
     end
     if UI.RefreshAdvancedPage then
         UI:RefreshAdvancedPage()
+    end
+    if UI.RefreshProfilesPage then
+        UI:RefreshProfilesPage()
     end
 end
 
@@ -134,6 +168,121 @@ function UI:OpenModule(key)
         Print((module.name or key) .. " configuration failed to open: " .. tostring(errorMessage))
         return false
     end
+    return true
+end
+
+function UI:GetSharedProfiles()
+    if not DB then return {} end
+    if type(DB.profiles) ~= "table" then DB.profiles = {} end
+    return DB.profiles
+end
+
+function UI:GetSharedProfileNames()
+    local names = {}
+    local profiles = UI:GetSharedProfiles()
+    for name, profile in pairs(profiles) do
+        if type(name) == "string" and name ~= "" and type(profile) == "table" then
+            table.insert(names, name)
+        end
+    end
+    table.sort(names, function(a, b) return string.lower(a) < string.lower(b) end)
+    return names
+end
+
+function UI:GetLastSharedProfileName()
+    return DB and NormalizeProfileName(DB.lastProfileName) or ""
+end
+
+function UI:SetLastSharedProfileName(name)
+    if not DB then return end
+    DB.lastProfileName = NormalizeProfileName(name)
+end
+
+function UI:SaveSharedProfile(name)
+    if not DB then return false, "DMLUI is not initialized." end
+    name = NormalizeProfileName(name)
+    if name == "" then return false, "Enter a profile name first." end
+
+    local profiles = UI:GetSharedProfiles()
+    local profile = profiles[name]
+    if type(profile) ~= "table" then
+        profile = { version = 1, modules = {} }
+    end
+    if type(profile.modules) ~= "table" then profile.modules = {} end
+
+    local saved = 0
+    for _, key in ipairs(UI.profileModuleOrder) do
+        local module = UI:GetModule(key)
+        if module and type(module.profileExport) == "function" then
+            local ok, data = pcall(module.profileExport)
+            if ok and type(data) == "table" then
+                -- Crucial modular behavior: update only installed modules.
+                -- Sections belonging to missing modules remain untouched.
+                profile.modules[key] = DeepCopy(data)
+                saved = saved + 1
+            elseif not ok then
+                Print("Could not save " .. (UI.profileModuleLabels[key] or key) .. " settings: " .. tostring(data))
+            end
+        end
+    end
+
+    profile.version = 1
+    profile.updated = date and date("%Y-%m-%d %H:%M") or nil
+    profiles[name] = profile
+    DB.lastProfileName = name
+    if UI.RefreshProfilesPage then UI:RefreshProfilesPage(name) end
+    return true, saved
+end
+
+function UI:LoadSharedProfile(name)
+    if not DB then return false, "DMLUI is not initialized." end
+    if InCombatLockdown and InCombatLockdown() then
+        return false, "Profiles cannot be loaded during combat."
+    end
+
+    name = NormalizeProfileName(name)
+    local profile = UI:GetSharedProfiles()[name]
+    if type(profile) ~= "table" or type(profile.modules) ~= "table" then
+        return false, "That profile does not exist."
+    end
+
+    local loaded = 0
+    local skipped = 0
+    local errors = {}
+    for _, key in ipairs(UI.profileModuleOrder) do
+        local data = profile.modules[key]
+        if type(data) == "table" then
+            local module = UI:GetModule(key)
+            if module and type(module.profileImport) == "function" then
+                local ok, result, reason = pcall(module.profileImport, DeepCopy(data))
+                if ok and result ~= false then
+                    loaded = loaded + 1
+                else
+                    table.insert(errors, (UI.profileModuleLabels[key] or key) .. ": " .. tostring(ok and reason or result))
+                end
+            else
+                -- Missing modules are intentionally ignored. Their saved profile
+                -- sections remain intact for a future reinstall.
+                skipped = skipped + 1
+            end
+        end
+    end
+
+    DB.lastProfileName = name
+    if UI.RefreshProfilesPage then UI:RefreshProfilesPage(name) end
+    if #errors > 0 then
+        return false, "Some module settings could not be loaded: " .. table.concat(errors, "; "), loaded, skipped
+    end
+    return true, loaded, skipped
+end
+
+function UI:DeleteSharedProfile(name)
+    if not DB then return false end
+    name = NormalizeProfileName(name)
+    if name == "" or type(DB.profiles) ~= "table" or DB.profiles[name] == nil then return false end
+    DB.profiles[name] = nil
+    if DB.lastProfileName == name then DB.lastProfileName = "" end
+    if UI.RefreshProfilesPage then UI:RefreshProfilesPage() end
     return true
 end
 

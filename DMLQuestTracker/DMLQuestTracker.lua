@@ -5,7 +5,7 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.118"
+QT.VERSION = "2.0.123"
 QT.WIDTH = 310
 QT.WIDTH_MIN = 220
 QT.WIDTH_MAX = 600
@@ -982,6 +982,30 @@ local function CreateConfigFrame()
     configFrame:Hide()
 end
 
+function QT:ExportProfile()
+    local snapshot = CopyTable(DB or DMLQuestTrackerDB or {})
+    -- Per-quest +/- collapse state belongs to the current character's current
+    -- quest log, not to a reusable UI profile.
+    snapshot.questCollapsed = nil
+    return snapshot
+end
+
+function QT:ImportProfile(data)
+    if type(data) ~= "table" then return false, "Invalid Quest Tracker profile data." end
+
+    local currentQuestCollapsed = DB and CopyTable(DB.questCollapsed) or {}
+    DMLQuestTrackerDB = CopyTable(data)
+    DMLQuestTrackerDB.questCollapsed = currentQuestCollapsed
+    DB = DMLQuestTrackerDB
+    CopyDefaults(false)
+    RestorePosition()
+    ApplyAppearance()
+    ApplyEnabledState()
+    QT:Refresh()
+    RefreshConfig()
+    return true
+end
+
 function QT:OpenConfig()
     if not configFrame then CreateConfigFrame() end
     RefreshConfig()
@@ -994,7 +1018,9 @@ local function RegisterWithCore()
         DMLUI:RegisterModule("QuestTracker", {
             name = "Quest Tracker",
             version = QT.VERSION,
-            openConfig = function() return QT:OpenConfig() end
+            openConfig = function() return QT:OpenConfig() end,
+            profileExport = function() return QT:ExportProfile() end,
+            profileImport = function(data) return QT:ImportProfile(data) end
         })
     end
 end

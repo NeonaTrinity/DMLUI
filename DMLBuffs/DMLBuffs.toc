@@ -2,7 +2,7 @@
 ## Title: DMLUI - Buffs
 ## Notes: Optional DMLUI buff/debuff frames, attached or movable aura panels, and cleanse highlighting for WoW 3.3.5a.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.122
+## Version: 2.0.123
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## Dependencies: DMLUI_Core

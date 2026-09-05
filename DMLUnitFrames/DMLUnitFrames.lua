@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.120"
+UF.VERSION = "2.0.123"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -1298,6 +1298,52 @@ local function UpdatePortraitDisplay(frame, unit, force3DRefresh)
     end
 end
 
+local function UpdateUnitBadges(frame, unit)
+    -- The badges belong to the portrait treatment; do not leave them floating
+    -- when a player intentionally hides portraits.
+    if not DB.showPortrait then
+        if frame.leaderIcon then frame.leaderIcon:Hide() end
+        if frame.pvpIcon then frame.pvpIcon:Hide() end
+        return
+    end
+
+    if frame.leaderIcon then
+        local isLeader = false
+        if unit == "player" and IsPartyLeader then
+            isLeader = IsPartyLeader() and true or false
+        elseif UnitIsPartyLeader then
+            isLeader = UnitIsPartyLeader(unit) and true or false
+        end
+
+        local grouped = false
+        if unit == "player" then
+            grouped = ((GetNumPartyMembers and GetNumPartyMembers() or 0) > 0) or ((GetNumRaidMembers and GetNumRaidMembers() or 0) > 0)
+        else
+            grouped = (UnitInParty and UnitInParty(unit)) or (UnitInRaid and UnitInRaid(unit)) or false
+        end
+
+        if isLeader and grouped then frame.leaderIcon:Show() else frame.leaderIcon:Hide() end
+    end
+
+    if frame.pvpIcon then
+        local texture
+        if UnitIsPlayer and UnitIsPlayer(unit) then
+            if UnitIsPVPFreeForAll and UnitIsPVPFreeForAll(unit) then
+                texture = "Interface\\TargetingFrame\\UI-PVP-FFA"
+            elseif UnitIsPVP and UnitIsPVP(unit) and UnitFactionGroup then
+                local factionGroup = UnitFactionGroup(unit)
+                if factionGroup then texture = "Interface\\TargetingFrame\\UI-PVP-" .. tostring(factionGroup) end
+            end
+        end
+        if texture then
+            frame.pvpIcon:SetTexture(texture)
+            frame.pvpIcon:Show()
+        else
+            frame.pvpIcon:Hide()
+        end
+    end
+end
+
 local function UpdateFrame(key, forcePortraitRefresh)
     local frame = UF.frames[key]
     local definition = GetDefinition(key)
@@ -1350,6 +1396,7 @@ local function UpdateFrame(key, forcePortraitRefresh)
     UpdateClassCreatureText(frame, unit)
 
     UpdatePortraitDisplay(frame, unit, forcePortraitRefresh)
+    UpdateUnitBadges(frame, unit)
 
     local health = tonumber(UnitHealth(unit)) or 0
     local healthMax = tonumber(UnitHealthMax(unit)) or 0
@@ -1679,6 +1726,24 @@ local function CreateUnitFrame(key)
     classificationDragon:SetTexCoord(1.0, 0.57, 0.0, 0.78)
     classificationDragon:Hide()
 
+    -- Party/group leader crown. Blizzard uses this same texture on its Wrath
+    -- target and party frames. Anchoring it to the portrait makes it inherit
+    -- DML's complete unit-frame scale automatically.
+    local leaderIcon = portraitOverlay:CreateTexture(nil, "OVERLAY")
+    leaderIcon:SetWidth(16)
+    leaderIcon:SetHeight(16)
+    leaderIcon:SetPoint("TOPLEFT", portraitBorder, "TOPLEFT", -3, 3)
+    leaderIcon:SetTexture("Interface\\GroupFrame\\UI-Group-LeaderIcon")
+    leaderIcon:SetTexCoord(0, 1, 0, 1)
+    leaderIcon:Hide()
+
+    -- Blizzard-style PvP faction badge in the opposite portrait corner.
+    local pvpIcon = portraitOverlay:CreateTexture(nil, "OVERLAY")
+    pvpIcon:SetWidth(28)
+    pvpIcon:SetHeight(28)
+    pvpIcon:SetPoint("BOTTOMRIGHT", portraitBorder, "BOTTOMRIGHT", 6, -6)
+    pvpIcon:Hide()
+
     local combatIcon
     if key == "player" or definition.partyMember then
         combatIcon = portraitOverlay:CreateTexture(nil, "OVERLAY")
@@ -1850,6 +1915,8 @@ local function CreateUnitFrame(key)
     frame.portraitBorder = portraitBorder
     frame.auraAnchor = auraAnchor
     frame.classificationDragon = classificationDragon
+    frame.leaderIcon = leaderIcon
+    frame.pvpIcon = pvpIcon
     frame.combatIcon = combatIcon
     frame.nameBanner = nameBanner
     frame.nameText = nameText
@@ -2869,6 +2936,28 @@ function UF:RefreshBlizzardPlayerCastBarVisibility()
     if initialized then ApplyBlizzardPlayerCastBarVisibility() end
 end
 
+function UF:ExportProfile()
+    return CopyTable(DB or DMLUnitFramesDB or {})
+end
+
+function UF:ImportProfile(data)
+    if type(data) ~= "table" then return false, "Invalid Unit Frames profile data." end
+    if InCombat() then return false, "Unit Frames cannot load a profile during combat." end
+
+    DMLUnitFramesDB = CopyTable(data)
+    DB = DMLUnitFramesDB
+    CopyDefaults(false)
+    RebuildRangeSpellCache()
+
+    for _, key in ipairs(UF.baseOrder) do RestorePosition(key) end
+    ApplyAllFrameScales()
+    ApplyPartyLayout()
+    ApplyFrameActivation()
+    RefreshConfig()
+    if DMLBuffs and DMLBuffs.OnUnitFramesLayoutChanged then DMLBuffs:OnUnitFramesLayoutChanged() end
+    return true
+end
+
 function UF:OpenConfig()
     if not configFrame then CreateConfigFrame() end
     RefreshConfig()
@@ -2881,7 +2970,9 @@ local function RegisterWithCore()
         DMLUI:RegisterModule("UnitFrames", {
             name = "Unit Frames",
             version = UF.VERSION,
-            openConfig = function() return UF:OpenConfig() end
+            openConfig = function() return UF:OpenConfig() end,
+            profileExport = function() return UF:ExportProfile() end,
+            profileImport = function(data) return UF:ImportProfile(data) end
         })
     end
 end
@@ -3003,6 +3094,11 @@ eventFrame:SetScript("OnEvent", function(_, event, arg1)
             UpdateFrame("party" .. j)
             UpdateFrame("partypet" .. j)
         end
+        -- Leadership badges can change for the player/target/focus when party
+        -- leadership changes even though those unit tokens themselves did not.
+        UpdateFrame("player")
+        UpdateFrame("target")
+        UpdateFrame("focus")
         ApplyBlizzardFrameVisibility()
     elseif event == "UNIT_PET" then
         if arg1 == "player" then

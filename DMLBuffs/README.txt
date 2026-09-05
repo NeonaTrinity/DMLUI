@@ -50,3 +50,6 @@ Standalone mode (DMLUnitFrames not installed):
 - Party aura controls are disabled and party aura rows are hidden when DML party frames are disabled.
 - Decurse highlight controls are disabled when no relevant DML unit frame is active; highlighting never falls back to Blizzard frames.
 - Re-enabling a DML unit frame restores the player's saved attachment/highlight behavior.
+
+2.0.123:
+- Shared DMLUI profile export/import support. Missing Unit Frames behavior remains module-safe.

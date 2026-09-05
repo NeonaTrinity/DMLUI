@@ -9,7 +9,7 @@
 DMLBuffs = DMLBuffs or {}
 local B = DMLBuffs
 
-B.VERSION = "2.0.122"
+B.VERSION = "2.0.123"
 B.ICON_SIZE = 24
 B.PARTY_ICON_SIZE = 18
 B.ICON_GAP = 2
@@ -1715,6 +1715,25 @@ local function CreateConfigFrame()
     configFrame:Hide()
 end
 
+function B:ExportProfile()
+    return CopyTable(DB or DMLBuffsDB or {})
+end
+
+function B:ImportProfile(data)
+    if type(data) ~= "table" then return false, "Invalid Buffs profile data." end
+    if InCombat() then return false, "Buffs cannot load a profile during combat." end
+
+    DMLBuffsDB = CopyTable(data)
+    DB = DMLBuffsDB
+    CopyDefaults(false)
+    for _, key in ipairs(movableOrder) do RestoreMoverPosition(key) end
+    ApplyAllLayouts(true)
+    PrepareHighlightLayers()
+    B:RefreshAll(false)
+    RefreshConfig()
+    return true
+end
+
 function B:OpenConfig()
     if not configFrame then CreateConfigFrame() end
     RefreshConfig()
@@ -1727,7 +1746,9 @@ local function RegisterWithCore()
         DMLUI:RegisterModule("Buffs", {
             name = "Buffs",
             version = B.VERSION,
-            openConfig = function() return B:OpenConfig() end
+            openConfig = function() return B:OpenConfig() end,
+            profileExport = function() return B:ExportProfile() end,
+            profileImport = function(data) return B:ImportProfile(data) end
         })
     end
 end

@@ -26,3 +26,6 @@ Slash command: /dmlcast
 
 2.0.99 fix:
 - Rebuilt cast detection/display on Blizzard 3.3.5 CastingBarFrameTemplate/engine while retaining DML sizing, color, border, text/time, and anchor controls.
+
+2.0.123:
+- Shared DMLUI profile export/import support. Existing standalone behavior is unchanged.

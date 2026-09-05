@@ -68,3 +68,7 @@ Existing features include:
 - Movable anchors and reset controls.
 
 Slash command: /dmluf
+2.0.123:
+- Small Blizzard-style group leader crown on the portrait top-left.
+- PvP faction/FFA badge on the portrait bottom-right for PvP-flagged player units.
+- Shared DMLUI profile export/import support.

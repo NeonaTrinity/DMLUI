@@ -5,7 +5,7 @@
 DMLCastBar = DMLCastBar or {}
 local CB = DMLCastBar
 
-CB.VERSION = "2.0.106"
+CB.VERSION = "2.0.123"
 CB.WIDTH_MIN = 100
 CB.WIDTH_MAX = 800
 CB.HEIGHT_MIN = 10
@@ -532,6 +532,26 @@ local function CreateConfig()
     configFrame:Hide()
 end
 
+function CB:ExportProfile()
+    return CopyTable(DB or DMLCastBarDB or {})
+end
+
+function CB:ImportProfile(data)
+    if type(data) ~= "table" then return false, "Invalid Cast Bar profile data." end
+    if InCombat() then return false, "Cast Bar cannot load a profile during combat." end
+
+    DMLCastBarDB = CopyTable(data)
+    DB = DMLCastBarDB
+    CopyDefaults(false)
+    RestorePosition()
+    ApplyAppearance()
+    ApplyStockCastBarVisibility()
+    SyncUnitFrames()
+    UpdateCast()
+    RefreshConfig()
+    return true
+end
+
 function CB:OpenConfig()
     if not configFrame then CreateConfig() end
     RefreshConfig()
@@ -544,7 +564,9 @@ local function RegisterWithCore()
         DMLUI:RegisterModule("CastBars", {
             name = "Cast Bars",
             version = CB.VERSION,
-            openConfig = function() return CB:OpenConfig() end
+            openConfig = function() return CB:OpenConfig() end,
+            profileExport = function() return CB:ExportProfile() end,
+            profileImport = function(data) return CB:ImportProfile(data) end
         })
     end
 end

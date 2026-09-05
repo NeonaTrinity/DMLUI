@@ -38,3 +38,6 @@ Slash commands:
 2.0.113
 - Added real-time quest-log watch synchronization by securely hooking AddQuestWatch and RemoveQuestWatch.
 - Manual track/untrack changes from Blizzard Quest Log now refresh DMLQuestTracker on the next UI frame without requiring DML interaction.
+
+2.0.123:
+- Shared DMLUI profile export/import support. Per-quest +/- collapse state remains character-local and is not copied by shared profiles.
