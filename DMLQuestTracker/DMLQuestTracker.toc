@@ -2,7 +2,7 @@
 ## Title: DMLUI - Quest Tracker
 ## Notes: Optional movable DMLUI quest tracker with per-quest objective collapsing.
 ## Author: Spaghetti Dog Games
-## Version: 2.0.113
+## Version: 2.0.117
 ## DefaultState: Enabled
 ## LoadOnDemand: 0
 ## Dependencies: DMLUI_Core

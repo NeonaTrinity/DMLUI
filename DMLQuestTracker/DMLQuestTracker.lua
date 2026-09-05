@@ -5,9 +5,10 @@
 DMLQuestTracker = DMLQuestTracker or {}
 local QT = DMLQuestTracker
 
-QT.VERSION = "2.0.113"
+QT.VERSION = "2.0.117"
 QT.WIDTH = 310
 QT.HEADER_HEIGHT = 24
+QT.CONTAINER_HEIGHT = QT.HEADER_HEIGHT + 5
 QT.QUEST_MIN_HEIGHT = 18
 QT.OBJECTIVE_MIN_HEIGHT = 16
 QT.QUEST_GAP = 4
@@ -167,7 +168,7 @@ local function UpdateAnchorClampInsets()
     --   right  = allow the tracker body beyond the anchor to leave the screen
     --   top    = keep the anchor's top edge on-screen
     --   bottom = allow the tracker body below the anchor to leave the screen
-    local height = tonumber(container:GetHeight()) or (QT.HEADER_HEIGHT + QT.BOTTOM_PADDING)
+    local height = tonumber(container:GetHeight()) or QT.CONTAINER_HEIGHT
     local rightOverflow = math.max(0, QT.WIDTH - QT.ANCHOR_WIDTH)
     local anchorTopOffset = QT.ANCHOR_HEIGHT + QT.ANCHOR_GAP
     local bodyBelowAnchor = height + QT.ANCHOR_GAP
@@ -465,14 +466,14 @@ local function CreateTrackerFrames()
 
     container = CreateFrame("Frame", "DMLUIQuestTrackerContainer", UIParent)
     container:SetWidth(QT.WIDTH)
-    container:SetHeight(QT.HEADER_HEIGHT + QT.BOTTOM_PADDING)
+    container:SetHeight(QT.CONTAINER_HEIGHT)
     container:SetMovable(true)
     container:SetClampedToScreen(true)
 
     tracker = CreateFrame("Frame", "DMLUIQuestTrackerFrame", container)
     tracker:SetPoint("TOPLEFT", container, "TOPLEFT", 0, 0)
     tracker:SetWidth(QT.WIDTH)
-    tracker:SetHeight(QT.HEADER_HEIGHT + QT.BOTTOM_PADDING)
+    tracker:SetHeight(QT.CONTAINER_HEIGHT)
     tracker:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -578,8 +579,9 @@ function QT:Refresh()
     HideBlizzardTracker()
 
     if DB.collapsed then
-        tracker:SetHeight(QT.HEADER_HEIGHT + 5)
-        container:SetHeight(QT.HEADER_HEIGHT + 5)
+        -- The container is a fixed-height top origin. Only the tracker body
+        -- collapses, so the DML Quest Tracker header never moves.
+        tracker:SetHeight(QT.CONTAINER_HEIGHT)
         UpdateAnchorClampInsets()
         UpdateAnchorVisibility()
         refreshing = false
@@ -657,8 +659,10 @@ function QT:Refresh()
     end
 
     local neededHeight = math.max(QT.HEADER_HEIGHT + 5, -y + QT.BOTTOM_PADDING)
+    -- Grow only the tracker body downward from the fixed container/header
+    -- origin. Resizing the movable container itself would make a CENTER- or
+    -- BOTTOM-anchored frame shift as quests are added/removed.
     tracker:SetHeight(neededHeight)
-    container:SetHeight(neededHeight)
     UpdateAnchorClampInsets()
     UpdateAnchorVisibility()
     refreshing = false

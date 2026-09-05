@@ -1,4 +1,4 @@
-# DMLUI 2.0.116
+# DMLUI 2.0.117
 
 DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modules you want.
 
@@ -10,10 +10,18 @@ DMLUI is a modular WoW 3.3.5a UI project. Install only the folders for the modul
 - `DMLUnitFrames/` - Unit Frames module (2.0.114).
 - `DMLCastBar/` - optional movable/customizable player cast bar (2.0.106).
 - `DMLBuffs/` - optional attached/detached aura and cleanse-highlighting module (2.0.116).
-- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.113).
+- `DMLQuestTracker/` - optional movable/collapsible quest tracker (2.0.117).
 
 
 
+
+## 2.0.117 highlights
+
+### DML Quest Tracker
+- The tracker header is now a fixed top origin instead of moving with the dynamic tracker height.
+- Adding quests expands the quest list downward while `DML Quest Tracker` stays stationary.
+- Removing quests shrinks the list upward toward the stationary header.
+- Whole-tracker collapse/expand leaves the header in exactly the same position and folds/unfolds quest rows beneath it.
 
 ## 2.0.116 highlights
 

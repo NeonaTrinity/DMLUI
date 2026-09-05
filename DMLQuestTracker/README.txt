@@ -1,4 +1,4 @@
-DMLUI - Quest Tracker 2.0.113
+DMLUI - Quest Tracker 2.0.117
 World of Warcraft 3.3.5a / Interface 30300
 
 Optional DMLUI quest tracker module.
@@ -22,6 +22,12 @@ Features:
 Slash commands:
 /dmlquest
 /dmlqt
+
+2.0.117
+- The DML Quest Tracker header is now a fixed top origin.
+- Adding quests expands the tracker downward instead of pushing the header upward.
+- Removing quests shrinks the tracker upward toward the stationary header.
+- Collapsing the whole tracker leaves the header in place and collapses all quest rows upward into it.
 
 2.0.113
 - Added real-time quest-log watch synchronization by securely hooking AddQuestWatch and RemoveQuestWatch.
