@@ -1,4 +1,8 @@
-# DMLUI v2.0.124
+# DMLUI v2.0.125
+
+## 2.0.125
+- Fixed combat taint from disabled secure DML unit frames (especially Target of Target) receiving normal unit-update events. `UpdateFrame()` no longer calls `Hide()` on a `SecureUnitButtonTemplate` while `InCombatLockdown()` is active; enable/disable visibility remains owned by the existing out-of-combat `RegisterUnitWatch` / `UnregisterUnitWatch` activation path.
+
 
 Modular UI addon for World of Warcraft 3.3.5a. Install DMLUI_Core plus any optional modules you want.
 

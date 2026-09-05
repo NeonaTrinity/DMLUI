@@ -1,5 +1,9 @@
-DMLUI Unit Frames 2.0.114
+DMLUI Unit Frames 2.0.125
 
+
+New in 2.0.125:
+- Fixed Interface Action Blocked/taint spam when a disabled secure DML unit frame (notably Target of Target) received unit update events during combat.
+- Protected unit-frame Show/Hide state is now left unchanged during combat and continues to be applied safely out of combat through the existing unit-watch activation path.
 
 New in 2.0.114:
 - Fine-tuned rare/elite/world-boss dragon placement: slightly left, slightly down, and about 5% larger around the portrait.

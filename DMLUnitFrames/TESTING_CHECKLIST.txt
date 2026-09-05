@@ -1,4 +1,4 @@
-DMLUI Unit Frames 2.0.114 - test checklist
+DMLUI Unit Frames 2.0.125 - test checklist
 
 RANGE SPELLS
 [ ] On a stock 3.3.5a Shaman with Healing Wave known, Party range dropdown is not empty.
@@ -93,3 +93,10 @@ REGRESSION
 - Hostile PvP player targets receive the hostile reaction banner too.
 - Name text color remains independently controlled by class/alignment/custom name-color settings.
 - Installing/removing DMLBuffs does not break Unit Frames.
+
+
+2.0.125 COMBAT-TAINT VALIDATION:
+[ ] Disable DML Target of Target before combat, enter combat, change targets / let targettarget change repeatedly: no Interface Action Blocked message.
+[ ] Taint log contains no DMLUIUnitFrame_targettarget:Hide() entries from UpdateFrame().
+[ ] Enabled Target of Target still appears/disappears automatically with UnitWatch as the target gains/loses a target.
+[ ] Enabling/disabling DML secure unit frames remains blocked during combat and applies normally after combat.

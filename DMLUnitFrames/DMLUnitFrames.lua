@@ -7,7 +7,7 @@
 DMLUnitFrames = DMLUnitFrames or {}
 local UF = DMLUnitFrames
 
-UF.VERSION = "2.0.124"
+UF.VERSION = "2.0.125"
 UF.FRAME_WIDTH = 250
 UF.FRAME_HEIGHT = 82
 UF.ANCHOR_HEIGHT = 18
@@ -1352,7 +1352,16 @@ local function UpdateFrame(key, forcePortraitRefresh)
     local unit = definition.unit
     if not IsDefinitionEnabled(key, definition) then
         if frame.castBar then frame.castBar:Hide() end
-        frame:Hide()
+        -- DML unit frames are SecureUnitButtonTemplate frames. Their enabled/
+        -- disabled visibility is applied out of combat by ApplyFrameActivation()
+        -- using RegisterUnitWatch/UnregisterUnitWatch. Repeated unit events can
+        -- still call UpdateFrame() for a disabled frame during combat; calling
+        -- Hide() here would be a protected action and causes an Interface Action
+        -- Blocked/taint error. Leave its already-established visibility alone
+        -- until combat ends.
+        if not InCombat() then
+            frame:Hide()
+        end
         return
     end
 
